@@ -1,0 +1,11 @@
+# Usage: copy .env.example to .env at the repo root, fill values, then `docker compose up --build`
+services:
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
