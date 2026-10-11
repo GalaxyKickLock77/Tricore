@@ -25,6 +25,7 @@ export default function MyTickets() {
   const [subject, setSubject] = useState('')
   const [details, setDetails] = useState('')
   const [saving, setSaving] = useState(false)
+  const [fresh, setFresh] = useState<Set<string>>(new Set())
 
   const load = async () => {
     const [t, c] = await Promise.all([
@@ -32,9 +33,21 @@ export default function MyTickets() {
       supabase.from('ticket_comments').select('*').order('created_at', { ascending: true }),
     ])
     if (t.error) toast.error(t.error.message)
-    setTickets((t.data as Ticket[]) ?? [])
-    setComments((c.data as TicketComment[]) ?? [])
+    const tk = (t.data as Ticket[]) ?? []
+    const cm = (c.data as TicketComment[]) ?? []
+    setTickets(tk)
+    setComments(cm)
     setLoading(false)
+
+    // tickets with team replies / status changes the customer has not seen: show "New" now, mark as seen shortly after
+    const unseen = tk.filter((x) => cm.some((y) => y.ticket_id === x.id && y.author_role !== 'customer' && !y.is_internal && (!x.customer_last_seen || y.created_at > x.customer_last_seen)))
+    setFresh(new Set(unseen.map((x) => x.id)))
+    if (unseen.length) {
+      setTimeout(async () => {
+        await Promise.all(unseen.map((x) => supabase.rpc('mark_ticket_seen', { p_ticket: x.id })))
+        window.dispatchEvent(new Event('tickets-seen'))
+      }, 2500)
+    }
   }
   useEffect(() => {
     load()
@@ -82,6 +95,7 @@ export default function MyTickets() {
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <TicketStatusBadge status={t.status} />
+                  {fresh.has(t.id) && <span className="rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">New reply</span>}
                   <span className="font-mono text-xs text-muted-foreground">#{t.id.slice(0, 8).toUpperCase()}</span>
                   <span className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</span>
                 </div>

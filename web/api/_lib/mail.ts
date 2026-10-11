@@ -19,6 +19,7 @@ export interface NotifyPayload {
   contact?: string
   question?: string
   body?: string
+  status?: string
 }
 
 export interface Email {
@@ -91,10 +92,20 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
         if (admin) out.push(render({ to: admin, subject: `New support ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.question ?? ''], link: { label: 'Open tickets', url: `${appUrl}/admin/support` } }))
         break
       case 'reply':
-        if (contactEmail) out.push(render({ to: contactEmail, subject: `New reply on your ticket ${ref}`, lines: ['Our team replied to your ticket:', '', p.body ?? ''], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined }))
+        if (contactEmail) out.push(render({ to: contactEmail, subject: `New reply on your ticket ${ref}${p.status ? ` (${p.status})` : ''}`, lines: ['Our team replied to your ticket:', '', p.body ?? '', '', ...(p.status ? [`Ticket status: ${p.status}`] : [])], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined }))
         break
+      case 'status': {
+        const note =
+          p.status === 'Resolved'
+            ? 'We have marked your ticket as resolved. If you still need help, just reply and we will reopen it.'
+            : p.status === 'In progress'
+              ? 'Our team is working on your ticket.'
+              : 'Your ticket is open and waiting for our team.'
+        if (contactEmail) out.push(render({ to: contactEmail, subject: `Your ticket ${ref} is now ${p.status ?? 'updated'}`, lines: [`The status of your ticket ${ref} changed to: ${p.status ?? 'updated'}.`, note], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined }))
+        break
+      }
       case 'customer_reply':
-        if (admin) out.push(render({ to: admin, subject: `Customer replied on ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.body ?? ''], link: { label: 'Open tickets', url: `${appUrl}/admin/support` } }))
+        if (admin) out.push(render({ to: admin, subject: `Customer replied on ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.body ?? '', ...(p.status ? [`Ticket status: ${p.status}`] : [])], link: { label: 'Open tickets', url: `${appUrl}/admin/support` } }))
         break
     }
   }

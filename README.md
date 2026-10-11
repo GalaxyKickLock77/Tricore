@@ -119,3 +119,11 @@ UPI transaction ID (UTR) -> admin checks the bank and confirms -> admin ships (c
 - Admin **Knowledge** page: edit what the chat assistant knows.
 - Checks: `node --import ./scripts/ts-resolve.mjs scripts/mail-check.mts` (emails and endpoint security) and
   `scripts/ai-check.mts` (AI helpers; makes a few real model calls) from `web/`.
+
+### Ticket updates the customer sees and gets by email
+Run `supabase/migrations/20261014000000_ticket_updates.sql` once.
+- Every status change is written into the ticket thread ("Status changed to Resolved"), visible to the customer on the Support page.
+- A team reply emails the customer the message plus the ticket status. Changing the status on its own (Open, In progress, Resolved)
+  also emails the customer. A reply that moves the status sends one email, not two.
+- The customer's **Support** menu shows a red count of tickets with new replies, a live pop-up when the team replies, and a
+  "New reply" tag on those tickets until they have been viewed.

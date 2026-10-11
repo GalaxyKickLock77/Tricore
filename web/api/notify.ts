@@ -48,6 +48,7 @@ export async function handleNotify(
     contact: clip(raw.contact, 200),
     question: clip(raw.question, 1500),
     body: clip(raw.body, 1500),
+    status: clip(raw.status, 30),
   }
 
   const emails = buildEmails(payload, deps.appUrl)

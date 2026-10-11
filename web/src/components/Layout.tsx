@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import { BookOpenText, LogOut, LifeBuoy, Moon, Settings, Package, ReceiptText, ShoppingBag, Store, Sun, Users } from 'lucide-react'
@@ -27,6 +27,36 @@ export default function Layout() {
   const isAdmin = profile?.role === 'admin'
   const email = session?.user.email ?? ''
   const [toAct, setToAct] = useState(0)
+  const [unread, setUnread] = useState(0)
+  const location = useLocation()
+
+  // Customer: how many support tickets have team replies they have not seen yet, plus a live pop-up.
+  const refreshUnread = useCallback(async () => {
+    const { data } = await supabase.rpc('my_unread_ticket_count')
+    setUnread(typeof data === 'number' ? data : 0)
+  }, [])
+  const isCustomer = !!profile && !isAdmin
+  useEffect(() => {
+    if (!isCustomer) return
+    refreshUnread()
+    const onSeen = () => refreshUnread()
+    window.addEventListener('tickets-seen', onSeen)
+    const ch = supabase
+      .channel('customer-tickets')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments' }, (payload) => {
+        const row = payload.new as { author_role?: string; is_internal?: boolean }
+        if (row.author_role === 'admin' && !row.is_internal) toast.info('New reply on your support ticket')
+        refreshUnread()
+      })
+      .subscribe()
+    return () => {
+      window.removeEventListener('tickets-seen', onSeen)
+      supabase.removeChannel(ch)
+    }
+  }, [isCustomer, refreshUnread])
+  useEffect(() => {
+    if (isCustomer) refreshUnread()
+  }, [location.pathname, isCustomer, refreshUnread])
 
   // Admin: how many orders need action (payment to verify, or paid and ready to ship) + live alerts.
   const refreshCount = useCallback(async () => {
@@ -69,7 +99,12 @@ export default function Layout() {
           <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
             <NavLink to="/shop" className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
             <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
-            {!isAdmin && <NavLink to="/tickets" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
+            {!isAdmin && (
+              <NavLink to="/tickets" className={navClass}>
+                <LifeBuoy className="size-4" />Support
+                {unread > 0 && <span className="ml-1 rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white" aria-label={`${unread} tickets with new replies`}>{unread}</span>}
+              </NavLink>
+            )}
             {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage products</NavLink>}
             {isAdmin && (
               <NavLink to="/admin/orders" className={navClass}>
@@ -120,7 +155,12 @@ export default function Layout() {
         <nav className="flex gap-1 overflow-x-auto border-t px-4 py-2 md:hidden" aria-label="Main mobile">
           <NavLink to="/shop" className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
           <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
-            {!isAdmin && <NavLink to="/tickets" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
+            {!isAdmin && (
+              <NavLink to="/tickets" className={navClass}>
+                <LifeBuoy className="size-4" />Support
+                {unread > 0 && <span className="ml-1 rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white" aria-label={`${unread} tickets with new replies`}>{unread}</span>}
+              </NavLink>
+            )}
           {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage</NavLink>}
           {isAdmin && (
               <NavLink to="/admin/orders" className={navClass}>

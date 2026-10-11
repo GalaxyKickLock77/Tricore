@@ -59,6 +59,15 @@ export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: 
       ) : (
         <ul className="space-y-2">
           {comments.map((c) => {
+            if (c.author_role === 'system') {
+              return (
+                <li key={c.id} className="flex items-center gap-2 py-0.5 text-xs text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  <span>{c.body} · {when(c.created_at)}</span>
+                  <span className="h-px flex-1 bg-border" />
+                </li>
+              )
+            }
             const mine = isAdmin ? c.author_role === 'admin' : c.author_role === 'customer'
             return (
               <li key={c.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>

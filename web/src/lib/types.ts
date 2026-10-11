@@ -87,12 +87,13 @@ export interface Ticket {
   ai_summary: string | null
   ai_category: string | null
   ai_priority: 'low' | 'normal' | 'high' | 'urgent' | null
+  customer_last_seen: string | null
 }
 
 export interface TicketComment {
   id: string
   ticket_id: string
-  author_role: 'admin' | 'customer'
+  author_role: 'admin' | 'customer' | 'system'
   body: string
   is_internal: boolean
   created_at: string
