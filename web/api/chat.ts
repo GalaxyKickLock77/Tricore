@@ -1,4 +1,4 @@
-import { answerQuestion, offer, routeFast, type ChatContext, type ChatMessage } from './_lib/core.js'
+import { answerQuestion, offer, routeFast, wantsOrderStatus, type ChatContext, type ChatMessage, type OrderRow } from './_lib/core.js'
 import { FALLBACK_ARTICLES } from './_lib/fallback-kb.js'
 
 // Simple per-instance throttle (best effort on serverless): 15 requests / 10 min per IP.
@@ -84,6 +84,24 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     // Database unreachable: still answer basics from the built-in core articles, never about products.
     context = { articles: FALLBACK_ARTICLES, products: [] }
+  }
+
+  // Read-only: the signed-in customer's OWN recent orders, fetched with THEIR token so database rules apply.
+  const lastText = messages[messages.length - 1].content
+  if (wantsOrderStatus(lastText)) {
+    const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+    context.orders = null
+    if (token) {
+      try {
+        const r = await fetch(
+          `${supaUrl}/rest/v1/orders?select=id,quantity,unit_price,status,created_at,products(name)&order=created_at.desc&limit=5`,
+          { headers: { apikey: supaKey, Authorization: `Bearer ${token}` } },
+        )
+        if (r.ok) context.orders = (await r.json()) as OrderRow[]
+      } catch {
+        context.orders = null
+      }
+    }
   }
 
   // Only plain first questions (no history, no remembered products, no name) are cached.

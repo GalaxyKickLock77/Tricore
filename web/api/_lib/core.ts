@@ -12,10 +12,32 @@ export interface KbProduct {
   availability: string
   description: string
 }
-export interface ChatContext { articles: KbArticle[]; products: KbProduct[]; total_products?: number }
+export interface OrderRow {
+  id: string
+  quantity: number
+  unit_price: number
+  status: string
+  created_at: string
+  products?: { name: string } | null
+}
+export interface ChatContext {
+  articles: KbArticle[]
+  products: KbProduct[]
+  total_products?: number
+  /** The signed-in customer's own recent orders. null = not signed in, undefined = not requested. */
+  orders?: OrderRow[] | null
+}
+
+/** A proposed order. The AI never places it: the customer must press Confirm in the chat window. */
+export interface OrderProposal {
+  product_id: string
+  name: string
+  unit_price: number
+  quantity: number
+}
 
 export interface BotReply {
-  action: 'answer' | 'offer_team' | 'handoff'
+  action: 'answer' | 'offer_team' | 'handoff' | 'confirm_order'
   answer: string
   intent: 'greeting' | 'offtopic' | 'question'
   sources: { id: string; title: string }[]
@@ -24,6 +46,7 @@ export interface BotReply {
   model?: string
   /** Names of products discussed so far; the client sends this back so the bot remembers beyond the chat window. */
   memory?: string[]
+  order?: OrderProposal
 }
 
 // Free-tier models on Groq, best accuracy first. Each model has its own rate limit, so the
@@ -124,6 +147,9 @@ export function routeFast(messages: ChatMessage[], name?: string): BotReply | nu
 }
 
 export function buildPrompt(ctx: ChatContext, name?: string, state = '') {
+  const orderLines = (ctx.orders ?? []).slice(0, 5).map((o, i) => {
+    return `[o${i + 1}] ${o.quantity} x ${o.products?.name ?? 'item'} | ${fmt(o.unit_price * o.quantity)} | ${o.status} | ${o.created_at.slice(0, 10)}`
+  })
   const products = ctx.products.slice(0, MAX_PRODUCTS_IN_PROMPT)
   const idMap = new Map<string, { id: string; title: string }>()
 
@@ -145,6 +171,10 @@ export function buildPrompt(ctx: ChatContext, name?: string, state = '') {
         .join('\n')
     : '(no products are listed right now)'
 
+  orderLines.forEach((_, i) => idMap.set(`o${i + 1}`, { id: `o${i + 1}`, title: 'Your orders' }))
+  const ordersText = orderLines.length
+    ? `\nCUSTOMER ORDERS (private to this signed-in customer; use only for questions about their own orders):\n${orderLines.join('\n')}`
+    : ''
   const total = ctx.total_products ?? products.length
   const listNote =
     products.length >= total
@@ -171,9 +201,9 @@ ARTICLES:
 ${articleText}
 
 PRODUCTS (prices in USD; ${listNote}):
-${productText}`
+${productText}${ordersText}`
 
-  return { system, idMap, contextText: `${articleText}\n${productText}` }
+  return { system, idMap, contextText: `${articleText}\n${productText}\n${ordersText}` }
 }
 
 type GroqOutcome = { ok: true; content: string } | { ok: false; status: number }
@@ -433,15 +463,93 @@ export function routeCatalog(messages: ChatMessage[], context: ChatContext, focu
       if (oos) return { ...reply('answer', outOfStockReply(p, products, false), 'question'), sources: src(p) }
       const price = wantsPrice || wantsAvail ? ` at ${fmt(p.price_usd)}` : ''
       const text = low
-        ? `${cap(p.name)} is available${price}, but only a few are left, so don't wait too long! You can order it from the Shop with the Buy button.`
+        ? `${cap(p.name)} is available${price}, but only a few are left, so don't wait too long! ${ORDER_OFFER}`
         : pick([
-            `Yes! ${cap(p.name)} is in stock${price}. You can order it from the Shop with the Buy button once you're signed in.`,
-            `Good news, ${cap(p.name)} is in stock${price}. Just sign in and click Buy on it in the Shop.`,
+            `Yes! ${cap(p.name)} is in stock${price}. ${ORDER_OFFER}`,
+            `Good news, ${cap(p.name)} is in stock${price}. ${ORDER_OFFER}`,
           ])
       return { ...reply('answer', text, 'question'), sources: src(p) }
     }
   }
   return null
+}
+
+// ───────── ordering on the customer's behalf (always confirmed by the customer in the UI) ─────────
+const ORDER_RE = /\b(order|buy|purchase|checkout|get me|book)\b|\bi(?:'| wi)?ll (?:take|get)\b|\bi want to (?:get|take)\b/i
+const QUESTIONY_RE = /\b(how (do|can|to)|can i|could i|may i|do i|where (can|do)|is it possible|what if|why)\b/i
+const NUMBER_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, dozen: 12 }
+export const MAX_ORDER_QTY = 20
+
+/** Quantity in "order 2 of them" / "buy three" (prices and the product's own numbers are ignored). Defaults to 1. */
+export function parseQuantity(text: string, p?: KbProduct): number {
+  const nameWords = new Set(p ? toks(p.name) : [])
+  const cleaned = text
+    .replace(/[$₹]\s*\d[\d,.]*|\d[\d,.]*\s*(\$|usd|dollars?|rs\b|inr|rupees)/gi, ' ')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => !nameWords.has(w.replace(/[^a-z0-9]/g, '')))
+    .join(' ')
+  const digit = cleaned.match(/(?:^|\s)(\d{1,3})(?=\s|$|x|\?|\.|,)/)
+  if (digit) return Math.min(Math.max(Number.parseInt(digit[1], 10), 1), MAX_ORDER_QTY)
+  const word = cleaned.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|couple|dozen)\b/)
+  return word ? Math.min(NUMBER_WORDS[word[1]], MAX_ORDER_QTY) : 1
+}
+
+const ORDER_OFFER = 'Want me to place the order for you right here?'
+const OFFERED_ORDER_RE = /place the order for you|order (it|that|this) for you|want me to order/i
+
+export function routeOrder(messages: ChatMessage[], context: ChatContext, focus: Focus): BotReply | null {
+  const last = messages[messages.length - 1]?.content ?? ''
+  const p = focus.product
+  if (!p) return null
+  if (wantsLowerPrice(last) || (focus.proposed !== null && focus.proposed < Number(p.price_usd))) return null // price talk first
+  const prev = [...messages.slice(0, -1)].reverse().find((m) => m.role === 'assistant')?.content ?? ''
+  const confirmedOffer = OFFERED_ORDER_RE.test(prev) && YES_RE.test(last)
+  const imperative = ORDER_RE.test(last) && !QUESTIONY_RE.test(last)
+  if (!confirmedOffer && !imperative) return null
+  if (!confirmedOffer && !(focus.explicit || PRONOUN_RE.test(last))) return null
+  if (/out of stock/i.test(p.availability)) return { ...reply('answer', outOfStockReply(p, context.products, false), 'question'), sources: src(p) }
+  const quantity = confirmedOffer ? 1 : parseQuantity(last, p)
+  const total = Number(p.price_usd) * quantity
+  const order: OrderProposal = { product_id: String(p.id).replace(/^product:/, ''), name: p.name, unit_price: Number(p.price_usd), quantity }
+  return {
+    ...reply('confirm_order', `Sure! Here's your order: ${quantity} × ${p.name} at ${fmt(p.price_usd)} each, ${fmt(total)} in total. Please confirm below and I'll place it for you.`, 'question'),
+    sources: src(p),
+    order,
+  }
+}
+
+// ───────── order status (read-only, only this customer's own orders) ─────────
+const STATUS_RE = /\b(where(?:'s| is)|status|track(?:ing)?|update)\b[\s\S]{0,30}\b(orders?|parcel|package|delivery|shipment)\b|\b(my|the) orders?\b[\s\S]{0,30}\b(status|shipped|arrived|delivered|delayed|late|pending|cancelled)\b|\b(not|haven't|hasn't|have not|has not)\b[\s\S]{0,20}\b(arrived|received|delivered|got)\b|\bwhat did i order\b|\bmy (latest|last|recent) order\b/i
+export const wantsOrderStatus = (t: string) => STATUS_RE.test(t) && !/^\s*how (do|can|to)\b/i.test(t)
+
+const STATUS_NOTE: Record<string, string> = {
+  pending: 'it is pending: our team will contact you to confirm the details and arrange payment',
+  paid: 'payment has been received and it will be shipped soon',
+  shipped: 'it has been shipped to you',
+  cancelled: 'it was cancelled',
+}
+
+export function routeOrders(messages: ChatMessage[], context: ChatContext): BotReply | null {
+  const last = messages[messages.length - 1]?.content ?? ''
+  if (!wantsOrderStatus(last)) return null
+  if (context.orders === undefined) return null
+  if (context.orders === null) {
+    return reply('answer', "I can look up your orders once you're signed in. Please sign in with Google, then ask me again, or open My orders from the menu.", 'question')
+  }
+  if (context.orders.length === 0) {
+    return reply('answer', "I don't see any orders on your account yet. Once you place one, I can track it for you here.", 'question')
+  }
+  const o = context.orders[0]
+  const nameOf = o.products?.name ?? 'your item'
+  const when = new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const more = context.orders.length > 1 ? ` You have ${context.orders.length - 1} other recent order${context.orders.length > 2 ? 's' : ''} under My orders.` : ''
+  const delayed = /not (yet )?(arrived|received|delivered)|haven't|hasn't|delayed|late/i.test(messages[messages.length - 1].content)
+  const tail = delayed && o.status !== 'cancelled' ? ' If it still doesn\'t look right, would you like me to connect you with my team?' : ''
+  return {
+    ...reply(delayed && o.status !== 'cancelled' ? 'offer_team' : 'answer', `Your latest order, ${o.quantity} × ${nameOf} (${fmt(o.unit_price * o.quantity)}, placed ${when}): ${STATUS_NOTE[o.status] ?? o.status}.${more}${tail}`, 'question'),
+    sources: [{ id: 'o1', title: 'Your orders' }],
+  }
 }
 
 function outOfStockReply(p: KbProduct, products: KbProduct[], askTeam = true): string {
@@ -475,7 +583,7 @@ export async function answerQuestion(opts: {
   const focus = analyze(messages, context.products, memory)
   const { system, idMap, contextText } = buildPrompt(context, name, stateBlock(focus, context.products))
   const withMemory = (r: BotReply): BotReply => ({ ...r, memory: focus.discussed })
-  const direct = routeCatalog(messages, context, focus)
+  const direct = routeOrders(messages, context) ?? routeOrder(messages, context, focus) ?? routeCatalog(messages, context, focus)
   if (direct) return withMemory(direct)
   const lastUser = messages[messages.length - 1]?.content ?? ''
 

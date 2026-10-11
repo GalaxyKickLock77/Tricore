@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bot, CheckCircle2, Headset, Loader2, MessageCircle, Send, X } from 'lucide-react'
+import { Bot, CheckCircle2, Headset, Loader2, MessageCircle, Send, ShoppingBag, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
@@ -15,8 +15,16 @@ interface Msg {
   sources?: { id: string; title: string }[]
 }
 
+interface OrderProposal {
+  product_id: string
+  name: string
+  unit_price: number
+  quantity: number
+}
+
 interface BotReply {
-  action: 'answer' | 'offer_team' | 'handoff'
+  action: 'answer' | 'offer_team' | 'handoff' | 'confirm_order'
+  order?: OrderProposal
   answer: string
   sources: { id: string; title: string }[]
   handoffReason?: string
@@ -44,6 +52,7 @@ export default function ChatWidget() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [handoff, setHandoff] = useState<{ question: string; reason: string } | null>(null)
+  const [proposal, setProposal] = useState<OrderProposal | null>(null)
   const [offer, setOffer] = useState<{ question: string; reason: string } | null>(null)
   const [sent, setSent] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -53,7 +62,7 @@ export default function ChatWidget() {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, loading, handoff, offer, sent, open])
+  }, [messages, loading, handoff, offer, proposal, sent, open])
 
   if (HIDDEN_ON.includes(pathname)) return null
 
@@ -64,11 +73,15 @@ export default function ChatWidget() {
     setMessages(next)
     setInput('')
     setOffer(null)
+    setProposal(null)
     setLoading(true)
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({
           // skip the local greeting; send only recent turns
           messages: next.slice(1).slice(-8).map(({ role, content }) => ({ role, content })),
@@ -81,6 +94,7 @@ export default function ChatWidget() {
       if (Array.isArray(reply.memory)) memoryRef.current = reply.memory
       setMessages((m) => [...m, { role: 'assistant', content: reply.answer, sources: reply.sources }])
       if (reply.action === 'handoff') setHandoff({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
+      if (reply.action === 'confirm_order' && reply.order) setProposal(reply.order)
       if (reply.action === 'offer_team') setOffer({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
     } catch {
       setMessages((m) => [
@@ -176,6 +190,22 @@ export default function ChatWidget() {
                 </div>
               )}
 
+              {proposal && !loading && (
+                <OrderConfirm
+                  key={`${proposal.product_id}-${proposal.quantity}`}
+                  proposal={proposal}
+                  signedIn={!!session}
+                  onDone={(text) => {
+                    setProposal(null)
+                    setMessages((m) => [...m, { role: 'assistant', content: text }])
+                  }}
+                  onCancel={() => {
+                    setProposal(null)
+                    setMessages((m) => [...m, { role: 'assistant', content: 'No problem, I have not placed anything. Anything else I can help with?' }])
+                  }}
+                />
+              )}
+
               {offer && !loading && (
                 <div className="flex flex-wrap gap-2">
                   <Button size="lg" onClick={acceptOffer}><Headset className="size-4" />Yes, connect me</Button>
@@ -234,6 +264,63 @@ export default function ChatWidget() {
         {open ? <X className="size-5" /> : <MessageCircle className="size-5" />}
       </Button>
     </>
+  )
+}
+
+function OrderConfirm({ proposal, signedIn, onDone, onCancel }: {
+  proposal: OrderProposal
+  signedIn: boolean
+  onDone: (text: string) => void
+  onCancel: () => void
+}) {
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const total = proposal.unit_price * proposal.quantity
+  const money = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+
+  // The order is placed by the customer's own signed-in session, never by the assistant.
+  const confirm = async () => {
+    setBusy(true)
+    setError(null)
+    const { error } = await supabase.rpc('place_order', { p_product_id: proposal.product_id, p_quantity: proposal.quantity })
+    setBusy(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    onDone(`Done! I've placed your order for ${proposal.quantity} × ${proposal.name}. It shows as pending in My orders, and the Tricore team will contact you to confirm the details and arrange payment.`)
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border bg-card p-3 text-sm">
+      <p className="flex items-center gap-1.5 font-medium"><ShoppingBag className="size-4 text-primary" /> Confirm your order</p>
+      <div className="flex justify-between gap-2">
+        <span>{proposal.quantity} × {proposal.name}</span>
+        <span className="font-medium">{money(total)}</span>
+      </div>
+      <p className="text-xs text-muted-foreground">{money(proposal.unit_price)} each. Payment is arranged with our team after the order.</p>
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+      {signedIn ? (
+        <div className="flex gap-2">
+          <Button size="lg" className="flex-1" disabled={busy} onClick={confirm}>
+            {busy && <Loader2 className="size-4 animate-spin" />} Confirm order
+          </Button>
+          <Button size="lg" variant="outline" disabled={busy} onClick={onCancel}>Cancel</Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs">Please sign in with Google to place this order, then ask me again.</p>
+          <div className="flex gap-2">
+            <Button size="lg" className="flex-1" onClick={() => navigate('/login')}>Sign in</Button>
+            <Button size="lg" variant="outline" onClick={onCancel}>Cancel</Button>
+          </div>
+        </div>
+      )}
+      {signedIn && (
+        <Link to="/orders" className="block text-xs text-muted-foreground underline-offset-4 hover:underline">View my orders</Link>
+      )}
+    </div>
   )
 }
 

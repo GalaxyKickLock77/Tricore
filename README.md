@@ -58,3 +58,13 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
   Groq (Developer tier, about $0.0006 per reply for gpt-oss-120b); no code change is needed.
 - **Checks without the model:** `node scripts/logic-check.mts` (from `web/`) tests product matching, price detection, memory
   and the direct answers. `scripts/eval-chat.mts` runs the question set against the real model (uses free-tier tokens).
+
+### What the assistant can and cannot do (access model)
+- **Can (read only):** public product list and knowledge base; the signed-in customer's OWN recent orders (fetched with the
+  customer's own token, so database rules apply) to answer "where is my order".
+- **Can propose:** an order (product, quantity, total). It appears as a "Confirm your order" card; the order is placed only
+  when the customer presses Confirm, using their own signed-in session and the existing `place_order()` function (stock check,
+  price snapshot, row level security). A chat message alone can never create an order.
+- **Can request:** a call-back from the team (contact form, only after the customer says yes).
+- **Cannot:** take payments, change prices or give discounts, cancel or edit orders, see other customers' data, use any
+  admin function, or touch products and stock. The server never holds a service key.

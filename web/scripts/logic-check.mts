@@ -1,7 +1,7 @@
 // Offline checks for conversation understanding (no model calls).
 import { writeFileSync, appendFileSync } from 'node:fs'
 import { readFileSync } from 'node:fs'
-import { analyze, buildPrompt, matchProduct, proposedPrice, routeCatalog, stateBlock, wantsLowerPrice, type ChatContext } from '../api/_lib/core.ts'
+import { analyze, buildPrompt, matchProduct, parseQuantity, proposedPrice, routeCatalog, routeOrder, routeOrders, stateBlock, wantsLowerPrice, wantsOrderStatus, type ChatContext } from '../api/_lib/core.ts'
 const OUT = new URL('../logic-out.txt', import.meta.url)
 writeFileSync(OUT, '')
 let fails = 0
@@ -70,6 +70,49 @@ r = route([u('price of Test'), a('Test is $100.00 but out of stock.'), u('do you
 ok(r === null, 'topic change without pronoun is NOT answered about the old product')
 r = route([u('I want 3 UPS units, price?')])
 ok(r === null, 'quantity questions go to the model (maths)')
+
+// ── ordering on behalf of the customer ──
+type M = { role: 'user' | 'assistant'; content: string }
+const ordRoute = (msgs: M[], c: ChatContext = ctx) => { const f = analyze(msgs, products); return routeOrders(msgs, c) ?? routeOrder(msgs, c, f) ?? routeCatalog(msgs, c, f) }
+ok(parseQuantity('order 2 of them') === 2, 'qty: "order 2 of them"')
+ok(parseQuantity('buy three UPS') === 3, 'qty: words')
+ok(parseQuantity('order the Dell Latitude 5440', products[1]) === 1, 'qty: product number 5440 is not a quantity')
+ok(parseQuantity('I want to order HP ProBook 450 G10', products[2]) === 1, 'qty: product number 450 is not a quantity')
+ok(parseQuantity('order 50 UPS') === 20, 'qty: capped at 20')
+ok(parseQuantity('buy it for $80') === 1, 'qty: price is not a quantity')
+
+let o = ordRoute([u('order the APC UPS')])
+ok(o?.action === 'confirm_order' && o.order?.product_id === '5' && o.order.quantity === 1 && o.order.unit_price === 139, 'order intent -> confirm_order proposal (not placed)')
+o = ordRoute([u('I want to buy 2 UPS')])
+ok(o?.action === 'confirm_order' && o.order?.quantity === 2 && /278/.test(o.answer), 'quantity 2 -> total 278: ' + o?.answer)
+o = ordRoute([u('is the UPS available?')])
+const offerText = o?.answer ?? ''
+ok(/place the order for you/i.test(offerText), 'availability reply offers to place the order')
+o = ordRoute([u('is the UPS available?'), a(offerText), u('yes please')])
+ok(o?.action === 'confirm_order' && o.order?.name === 'APC 1100VA UPS', 'yes after the offer -> confirm_order')
+o = ordRoute([u('yes please')])
+ok(o === null, 'bare yes without context -> nothing happens')
+o = ordRoute([u('order Test')])
+ok(o?.action === 'answer' && /out of stock/i.test(o.answer) && !o.order, 'out-of-stock item is never proposed')
+o = ordRoute([u('how do I order the UPS?')])
+ok(o === null, 'how-to question is left to the model')
+o = ordRoute([u('order the UPS for $100')])
+ok(o?.action === 'offer_team' && !o.order, 'order + lower price -> price talk first, no order')
+o = ordRoute([u('order a laptop')])
+ok(o === null, 'ambiguous product -> no order proposal')
+o = ordRoute([u('tell me about the UPS'), a('The APC 1100VA UPS is $139.00.'), u('ok order it')])
+ok(o?.action === 'confirm_order', '"order it" uses the product in focus')
+
+const withOrders = (orders: ChatContext['orders']): ChatContext => ({ ...ctx, orders })
+ok(wantsOrderStatus('where is my order?') && wantsOrderStatus("my order hasn't arrived") && !wantsOrderStatus('How do I check my order?'), 'order-status detector')
+o = ordRoute([u('where is my order?')], withOrders(null))
+ok(o?.action === 'answer' && /sign/i.test(o.answer), 'signed-out customer is asked to sign in')
+o = ordRoute([u('where is my order?')], withOrders([]))
+ok(/don't see any orders/i.test(o?.answer ?? ''), 'no orders yet')
+o = ordRoute([u('what is the status of my order')], withOrders([{ id: 'a', quantity: 2, unit_price: 139, status: 'shipped', created_at: '2026-10-09T10:00:00Z', products: { name: 'APC 1100VA UPS' } }]))
+ok(/shipped/i.test(o?.answer ?? '') && /278/.test(o?.answer ?? ''), 'reports the real status: ' + o?.answer)
+o = ordRoute([u('my order has not arrived')], withOrders([{ id: 'a', quantity: 1, unit_price: 139, status: 'pending', created_at: '2026-10-09T10:00:00Z', products: { name: 'APC 1100VA UPS' } }]))
+ok(o?.action === 'offer_team' && /pending/i.test(o.answer), 'not-arrived complaint -> status plus offer of the team')
 
 // ── prompt size ──
 const kb = JSON.parse(readFileSync(new URL('../../supabase/kb/articles.json', import.meta.url), 'utf8'))
