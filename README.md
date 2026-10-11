@@ -79,3 +79,18 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
   resolved ticket reopens it. Visitors who were not signed in get no in-app view; admins email them instead.
 - Comments can only be added through `add_ticket_comment()`, which checks who may write on which ticket.
 - No automatic email notifications are sent yet (that needs an email service such as Resend).
+
+## Checkout, GPay payment and shipping
+Flow: **Buy** -> checkout (delivery address) -> order placed (stock reserved) -> pay with GPay / any UPI app -> customer enters the
+UPI transaction ID (UTR) -> admin checks the bank and confirms -> admin ships (courier + tracking) -> delivered.
+- **Setup:** run `supabase/migrations/20261012000000_checkout.sql` in the Supabase SQL editor (also run `seed_kb.sql` again for the
+  updated chatbot knowledge). Then sign in as admin, open **Payment** in the menu and enter your UPI ID.
+- **Currency:** Indian rupees (UPI works only in INR). The numbers in your product list are now shown as rupees.
+- **Statuses:** awaiting_payment, payment_submitted, paid, shipped, delivered, cancelled. Status changes happen only through
+  database functions (`place_order`, `submit_payment`, `cancel_my_order`, `admin_*`), each with its own permission check and a
+  timeline entry the customer can see on My orders.
+- **Admin alerts:** an "Orders" badge counts orders that need action (payment to verify, paid and ready to ship), and a pop-up
+  appears live when an order is placed or a customer submits a payment. There are no email alerts yet (needs an email service).
+- **Important:** a UPI transaction ID typed by a customer is not proof of payment. Always match it against your bank statement
+  before pressing "Confirm payment received". For automatic verification use a payment gateway (Razorpay, Cashfree, PhonePe).
+- The chat assistant can start an order but never places it: the customer finishes address and payment on the checkout page.

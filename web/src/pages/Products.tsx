@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
-import { Loader2, Package, Search, ShoppingCart } from 'lucide-react'
+import { Package, Search, ShoppingCart } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Product } from '@/lib/types'
 import { money } from '@/lib/format'
@@ -13,10 +14,10 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function Products() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
-  const [buying, setBuying] = useState<string | null>(null)
 
   const load = async () => {
     const { data, error } = await supabase
@@ -33,14 +34,7 @@ export default function Products() {
     load()
   }, [])
 
-  const buy = async (p: Product) => {
-    setBuying(p.id)
-    const { error } = await supabase.rpc('place_order', { p_product_id: p.id, p_quantity: 1 })
-    if (error) toast.error(error.message)
-    else toast.success(`Order placed for ${p.name}`)
-    setBuying(null)
-    load()
-  }
+  const buy = (p: Product) => navigate(`/checkout?product=${p.id}&qty=1`)
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -97,8 +91,8 @@ export default function Products() {
                 </CardContent>
                 <CardFooter className="justify-between">
                   <span className="text-lg font-semibold">{money(p.price)}</span>
-                  <Button size="lg" disabled={p.stock < 1 || buying === p.id} onClick={() => buy(p)}>
-                    {buying === p.id ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
+                  <Button size="lg" disabled={p.stock < 1} onClick={() => buy(p)}>
+                    <ShoppingCart className="size-4" />
                     Buy
                   </Button>
                 </CardFooter>

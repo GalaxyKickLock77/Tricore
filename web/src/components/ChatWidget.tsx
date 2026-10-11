@@ -196,9 +196,9 @@ export default function ChatWidget() {
                   key={`${proposal.product_id}-${proposal.quantity}`}
                   proposal={proposal}
                   signedIn={!!session}
-                  onDone={(text) => {
+                  onContinue={() => {
                     setProposal(null)
-                    setMessages((m) => [...m, { role: 'assistant', content: text }])
+                    setOpen(false)
                   }}
                   onCancel={() => {
                     setProposal(null)
@@ -275,59 +275,36 @@ export default function ChatWidget() {
   )
 }
 
-function OrderConfirm({ proposal, signedIn, onDone, onCancel }: {
+function OrderConfirm({ proposal, signedIn, onContinue, onCancel }: {
   proposal: OrderProposal
   signedIn: boolean
-  onDone: (text: string) => void
+  onContinue: () => void
   onCancel: () => void
 }) {
   const navigate = useNavigate()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const total = proposal.unit_price * proposal.quantity
-  const money = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+  const money = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n)
+  const target = `/checkout?product=${proposal.product_id}&qty=${proposal.quantity}`
 
-  // The order is placed by the customer's own signed-in session, never by the assistant.
-  const confirm = async () => {
-    setBusy(true)
-    setError(null)
-    const { error } = await supabase.rpc('place_order', { p_product_id: proposal.product_id, p_quantity: proposal.quantity })
-    setBusy(false)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    onDone(`Done! I've placed your order for ${proposal.quantity} × ${proposal.name}. It shows as pending in My orders, and the Tricore team will contact you to confirm the details and arrange payment.`)
+  // The assistant never places an order. The customer finishes it on the checkout page (address, then GPay payment).
+  const go = () => {
+    if (!signedIn) sessionStorage.setItem('tricore_next', target)
+    onContinue()
+    navigate(signedIn ? target : '/login')
   }
 
   return (
     <div className="space-y-2 rounded-xl border bg-card p-3 text-sm">
-      <p className="flex items-center gap-1.5 font-medium"><ShoppingBag className="size-4 text-primary" /> Confirm your order</p>
+      <p className="flex items-center gap-1.5 font-medium"><ShoppingBag className="size-4 text-primary" /> Your order</p>
       <div className="flex justify-between gap-2">
         <span>{proposal.quantity} × {proposal.name}</span>
         <span className="font-medium">{money(total)}</span>
       </div>
-      <p className="text-xs text-muted-foreground">{money(proposal.unit_price)} each. Payment is arranged with our team after the order.</p>
-      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-      {signedIn ? (
-        <div className="flex gap-2">
-          <Button size="lg" className="flex-1" disabled={busy} onClick={confirm}>
-            {busy && <Loader2 className="size-4 animate-spin" />} Confirm order
-          </Button>
-          <Button size="lg" variant="outline" disabled={busy} onClick={onCancel}>Cancel</Button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-xs">Please sign in with Google to place this order, then ask me again.</p>
-          <div className="flex gap-2">
-            <Button size="lg" className="flex-1" onClick={() => navigate('/login')}>Sign in</Button>
-            <Button size="lg" variant="outline" onClick={onCancel}>Cancel</Button>
-          </div>
-        </div>
-      )}
-      {signedIn && (
-        <Link to="/orders" className="block text-xs text-muted-foreground underline-offset-4 hover:underline">View my orders</Link>
-      )}
+      <p className="text-xs text-muted-foreground">{money(proposal.unit_price)} each. Next you add your delivery address and pay with GPay.</p>
+      <div className="flex gap-2">
+        <Button size="lg" className="flex-1" onClick={go}>{signedIn ? 'Continue to checkout' : 'Sign in to continue'}</Button>
+        <Button size="lg" variant="outline" onClick={onCancel}>Cancel</Button>
+      </div>
     </div>
   )
 }

@@ -154,7 +154,7 @@ export default function AdminProducts() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="p-price">Price (USD)</Label>
+                <Label htmlFor="p-price">Price (INR)</Label>
                 <Input id="p-price" type="number" min="0" step="0.01" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
               </div>
               <div className="space-y-1.5">

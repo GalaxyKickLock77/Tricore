@@ -1,105 +1,218 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { Clock, DollarSign, ReceiptText, ShoppingBag } from 'lucide-react'
+import { BadgeIndianRupee, CheckCircle2, Clock, Loader2, MapPin, PackageCheck, ReceiptText, ShieldCheck, Truck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import type { Order, OrderStatus } from '@/lib/types'
-import { money, shortDate } from '@/lib/format'
+import { money, orderRef, shortDate } from '@/lib/format'
+import type { Order, OrderEvent, OrderStatus } from '@/lib/types'
 import { EmptyState, Page } from '@/components/Page'
+import OrderTimeline from '@/components/OrderTimeline'
+import { StatusBadge } from '@/components/StatusBadge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-const statuses: OrderStatus[] = ['pending', 'paid', 'shipped', 'cancelled']
+type Filter = 'action' | 'all' | OrderStatus
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'action', label: 'Needs action' },
+  { key: 'payment_submitted', label: 'Verify payment' },
+  { key: 'paid', label: 'Ready to ship' },
+  { key: 'awaiting_payment', label: 'Awaiting payment' },
+  { key: 'shipped', label: 'Shipped' },
+  { key: 'delivered', label: 'Delivered' },
+  { key: 'cancelled', label: 'Cancelled' },
+  { key: 'all', label: 'All' },
+]
+
+type Dlg =
+  | { kind: 'ship'; order: Order }
+  | { kind: 'reject'; order: Order }
+  | { kind: 'cancel'; order: Order }
+  | null
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([])
+  const [events, setEvents] = useState<OrderEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<Filter>('action')
+  const [dlg, setDlg] = useState<Dlg>(null)
+  const [busy, setBusy] = useState(false)
+  const [courier, setCourier] = useState('')
+  const [tracking, setTracking] = useState('')
+  const [url, setUrl] = useState('')
+  const [reason, setReason] = useState('')
 
   const load = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*, products(name), profiles(email)')
-      .order('created_at', { ascending: false })
-    if (error) toast.error(error.message)
-    setOrders((data as unknown as Order[]) ?? [])
+    const [o, e] = await Promise.all([
+      supabase.from('orders').select('*, products(name), profiles(email)').order('created_at', { ascending: false }),
+      supabase.from('order_events').select('*').order('created_at', { ascending: true }),
+    ])
+    if (o.error) toast.error(o.error.message)
+    setOrders((o.data as unknown as Order[]) ?? [])
+    setEvents((e.data as OrderEvent[]) ?? [])
     setLoading(false)
   }
   useEffect(() => {
     load()
+    // refresh when orders change (new order, payment submitted…)
+    const ch = supabase.channel('admin-orders-page').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load()).subscribe()
+    return () => {
+      supabase.removeChannel(ch)
+    }
   }, [])
 
-  const setStatus = async (id: string, status: OrderStatus) => {
-    const { error } = await supabase.from('orders').update({ status }).eq('id', id)
-    if (error) toast.error(error.message)
-    else toast.success(`Order marked ${status}`)
+  const byOrder = useMemo(() => {
+    const map = new Map<string, OrderEvent[]>()
+    for (const ev of events) map.set(ev.order_id, [...(map.get(ev.order_id) ?? []), ev])
+    return map
+  }, [events])
+
+  const count = (s: OrderStatus) => orders.filter((o) => o.status === s).length
+  const stats = [
+    { label: 'Verify payment', value: String(count('payment_submitted')), icon: Clock },
+    { label: 'Ready to ship', value: String(count('paid')), icon: PackageCheck },
+    { label: 'Shipped', value: String(count('shipped')), icon: Truck },
+    { label: 'Money received', value: money(orders.filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + Number(o.total), 0)), icon: BadgeIndianRupee },
+  ]
+
+  const shown = orders.filter((o) => filter === 'all' || (filter === 'action' ? o.status === 'payment_submitted' || o.status === 'paid' : o.status === filter))
+
+  const run = async (fn: string, args: Record<string, unknown>, ok: string) => {
+    setBusy(true)
+    const { error } = await supabase.rpc(fn, args)
+    setBusy(false)
+    if (error) return void toast.error(error.message)
+    toast.success(ok)
+    setDlg(null)
+    setReason('')
+    setCourier('')
+    setTracking('')
+    setUrl('')
     load()
   }
 
-  const stats = useMemo(() => {
-    const live = orders.filter((o) => o.status !== 'cancelled')
-    return [
-      { label: 'Total orders', value: String(orders.length), icon: ShoppingBag },
-      { label: 'Pending', value: String(orders.filter((o) => o.status === 'pending').length), icon: Clock },
-      { label: 'Revenue', value: money(live.reduce((s, o) => s + o.unit_price * o.quantity, 0)), icon: DollarSign },
-    ]
-  }, [orders])
+  const submitDialog = (e: FormEvent) => {
+    e.preventDefault()
+    if (!dlg) return
+    if (dlg.kind === 'ship') void run('admin_ship_order', { p_order: dlg.order.id, p_courier: courier, p_tracking: tracking, p_url: url || null }, 'Order marked as shipped')
+    if (dlg.kind === 'reject') void run('admin_reject_payment', { p_order: dlg.order.id, p_note: reason }, 'Customer asked to check the payment')
+    if (dlg.kind === 'cancel') void run('admin_cancel_order', { p_order: dlg.order.id, p_reason: reason }, 'Order cancelled and stock restored')
+  }
 
   return (
-    <Page title="All orders" description="Review customer orders and update their status.">
-      <div className="grid gap-4 sm:grid-cols-3">
+    <Page title="Orders" description="Verify payments in your bank, ship paid orders and keep customers updated.">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map(({ label, value, icon: Icon }) => (
           <Card key={label}>
             <CardContent className="flex items-center gap-3">
               <span className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary"><Icon className="size-5" /></span>
-              <div>
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="text-xl font-semibold">{value}</p>
-              </div>
+              <div><p className="text-sm text-muted-foreground">{label}</p><p className="text-xl font-semibold">{value}</p></div>
             </CardContent>
           </Card>
         ))}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => (
+          <Button key={f.key} size="lg" variant={filter === f.key ? 'default' : 'outline'} onClick={() => setFilter(f.key)}>{f.label}</Button>
+        ))}
+      </div>
+
       {loading ? (
         <Skeleton className="h-48 rounded-xl" />
-      ) : orders.length === 0 ? (
-        <EmptyState icon={<ReceiptText />} title="No orders yet" />
+      ) : shown.length === 0 ? (
+        <EmptyState icon={<ReceiptText />} title="Nothing here" hint="New orders and payments will appear automatically." />
       ) : (
-        <Card className="py-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="w-40">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell className="font-medium">{o.products?.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{o.profiles?.email}</TableCell>
-                  <TableCell className="text-right">{o.quantity}</TableCell>
-                  <TableCell className="text-right">{money(o.unit_price * o.quantity)}</TableCell>
-                  <TableCell className="text-muted-foreground">{shortDate(o.created_at)}</TableCell>
-                  <TableCell>
-                    <Select value={o.status} onValueChange={(v) => setStatus(o.id, v as OrderStatus)}>
-                      <SelectTrigger aria-label="Order status" className="w-36 capitalize"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {statuses.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <div className="space-y-4">
+          {shown.map((o) => (
+            <Card key={o.id}>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{o.products?.name} × {o.quantity} · {money(o.total)}</p>
+                    <p className="text-xs text-muted-foreground">#{orderRef(o.id)} · {shortDate(o.created_at)} · {o.profiles?.email}</p>
+                  </div>
+                  <StatusBadge status={o.status} />
+                </div>
+
+                {o.ship_line1 && (
+                  <p className="flex items-start gap-2 rounded-lg bg-muted/60 p-2 text-sm">
+                    <MapPin className="mt-0.5 size-4 shrink-0" />
+                    <span>{o.ship_name} · {o.ship_phone}<br />{o.ship_line1}{o.ship_line2 ? `, ${o.ship_line2}` : ''}, {o.ship_city}, {o.ship_state} {o.ship_pincode}</span>
+                  </p>
+                )}
+
+                {o.payment_reference && (
+                  <p className="text-sm">UPI transaction ID from customer: <b className="font-mono">{o.payment_reference}</b>. Check your bank statement for {money(o.total)} with this reference.</p>
+                )}
+                {o.tracking_number && <p className="text-sm">Courier: {o.courier} · tracking <b>{o.tracking_number}</b></p>}
+
+                <details>
+                  <summary className="cursor-pointer text-sm text-muted-foreground">History</summary>
+                  <div className="mt-2"><OrderTimeline status={o.status} events={byOrder.get(o.id) ?? []} /></div>
+                </details>
+
+                <div className="flex flex-wrap gap-2">
+                  {o.status === 'payment_submitted' && (
+                    <>
+                      <Button size="lg" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed')}><ShieldCheck className="size-4" />Confirm payment received</Button>
+                      <Button size="lg" variant="outline" onClick={() => setDlg({ kind: 'reject', order: o })}>Payment not received</Button>
+                    </>
+                  )}
+                  {o.status === 'awaiting_payment' && (
+                    <Button size="lg" variant="outline" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed')}>Mark as paid (received in bank)</Button>
+                  )}
+                  {o.status === 'paid' && (
+                    <Button size="lg" onClick={() => setDlg({ kind: 'ship', order: o })}><Truck className="size-4" />Ship order</Button>
+                  )}
+                  {o.status === 'shipped' && (
+                    <Button size="lg" onClick={() => run('admin_mark_delivered', { p_order: o.id }, 'Marked as delivered')}><CheckCircle2 className="size-4" />Mark delivered</Button>
+                  )}
+                  {['awaiting_payment', 'payment_submitted', 'paid'].includes(o.status) && (
+                    <Button size="lg" variant="ghost" className="text-destructive" onClick={() => setDlg({ kind: 'cancel', order: o })}>Cancel order</Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
+
+      <Dialog open={!!dlg} onOpenChange={(open) => !open && setDlg(null)}>
+        <DialogContent>
+          <form onSubmit={submitDialog} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>{dlg?.kind === 'ship' ? 'Ship this order' : dlg?.kind === 'reject' ? 'Payment not received' : 'Cancel this order'}</DialogTitle>
+              <DialogDescription>
+                {dlg?.kind === 'ship' && 'The customer sees the courier and tracking details on My orders.'}
+                {dlg?.kind === 'reject' && 'The customer is asked to check the payment and send the correct transaction ID.'}
+                {dlg?.kind === 'cancel' && 'The stock is returned. If the customer already paid, refund them yourself.'}
+              </DialogDescription>
+            </DialogHeader>
+            {dlg?.kind === 'ship' ? (
+              <>
+                <div className="space-y-1.5"><Label htmlFor="courier">Courier</Label><Input id="courier" required maxLength={60} placeholder="For example DTDC, Delhivery, India Post" value={courier} onChange={(e) => setCourier(e.target.value)} /></div>
+                <div className="space-y-1.5"><Label htmlFor="trk">Tracking number</Label><Input id="trk" required maxLength={80} value={tracking} onChange={(e) => setTracking(e.target.value)} /></div>
+                <div className="space-y-1.5"><Label htmlFor="trkurl">Tracking link (optional)</Label><Input id="trkurl" type="url" placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} /></div>
+              </>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="reason">Reason (shown to the customer)</Label>
+                <Input id="reason" required minLength={3} maxLength={300} placeholder={dlg?.kind === 'reject' ? 'For example: amount not received in bank' : 'For example: customer asked to cancel'} value={reason} onChange={(e) => setReason(e.target.value)} />
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDlg(null)}>Back</Button>
+              <Button type="submit" disabled={busy} variant={dlg?.kind === 'cancel' ? 'destructive' : 'default'}>
+                {busy && <Loader2 className="size-4 animate-spin" />}
+                {dlg?.kind === 'ship' ? 'Mark as shipped' : dlg?.kind === 'reject' ? 'Send to customer' : 'Cancel order'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Page>
   )
 }

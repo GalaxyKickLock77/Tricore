@@ -94,7 +94,7 @@ export async function POST(request: Request): Promise<Response> {
     if (token) {
       try {
         const r = await fetch(
-          `${supaUrl}/rest/v1/orders?select=id,quantity,unit_price,status,created_at,products(name)&order=created_at.desc&limit=5`,
+          `${supaUrl}/rest/v1/orders?select=id,quantity,unit_price,status,created_at,courier,tracking_number,products(name)&order=created_at.desc&limit=5`,
           { headers: { apikey: supaKey, Authorization: `Bearer ${token}` } },
         )
         if (r.ok) context.orders = (await r.json()) as OrderRow[]

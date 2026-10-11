@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { supabase } from '@/lib/supabase'
 
+/** Where to go after Google sign-in: the page the visitor wanted (if safe), otherwise the shop. */
+function nextPath() {
+  const next = sessionStorage.getItem('tricore_next')
+  sessionStorage.removeItem('tricore_next')
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/shop'
+}
+
 interface Props {
   title: string
   description: string
@@ -28,7 +35,7 @@ export default function AuthForm({ title, description, buttonLabel, footer }: Pr
     setError(null)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/shop` },
+      options: { redirectTo: `${window.location.origin}${nextPath()}` },
     })
     // On success the browser navigates to Google, so only errors return here.
     if (error) {

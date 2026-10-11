@@ -10,3 +10,4 @@ web/eval-out.txt
 web/handler-out.txt
 .tmp-verify/
 web/fallback-out.txt
+.tmp-sql/

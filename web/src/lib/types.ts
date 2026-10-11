@@ -18,7 +18,7 @@ export interface Product {
   created_at: string
 }
 
-export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'cancelled'
+export type OrderStatus = 'awaiting_payment' | 'payment_submitted' | 'paid' | 'shipped' | 'delivered' | 'cancelled'
 
 export interface Order {
   id: string
@@ -26,11 +26,51 @@ export interface Order {
   product_id: string
   quantity: number
   unit_price: number
+  total: number
   status: OrderStatus
   created_at: string
-  products?: { name: string } | null
+  payment_reference: string | null
+  payment_note: string | null
+  payment_submitted_at: string | null
+  paid_at: string | null
+  shipped_at: string | null
+  delivered_at: string | null
+  courier: string | null
+  tracking_number: string | null
+  tracking_url: string | null
+  cancelled_reason: string | null
+  ship_name: string | null
+  ship_phone: string | null
+  ship_line1: string | null
+  ship_line2: string | null
+  ship_city: string | null
+  ship_state: string | null
+  ship_pincode: string | null
+  ship_country: string | null
+  products?: { name: string; image_url?: string | null } | null
   profiles?: { email: string | null } | null
 }
+
+export interface OrderEvent {
+  id: string
+  order_id: string
+  status: OrderStatus
+  note: string | null
+  actor_role: 'customer' | 'admin' | 'system'
+  created_at: string
+}
+
+export interface Address {
+  name: string
+  phone: string
+  line1: string
+  line2: string
+  city: string
+  state: string
+  pincode: string
+}
+
+export type StoreSettings = Record<'upi_id' | 'upi_name' | 'payment_note', string>
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved'
 
