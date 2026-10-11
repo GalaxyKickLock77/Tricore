@@ -17,6 +17,6 @@ export function RequireAuth() {
 
 export function RequireAdmin() {
   const { profile } = useAuth()
-  if (profile?.role !== 'admin') return <Navigate to="/" replace />
+  if (profile?.role !== 'admin') return <Navigate to="/shop" replace />
   return <Outlet />
 }

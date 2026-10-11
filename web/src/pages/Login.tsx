@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 
 export default function Login() {
   const { session, loading } = useAuth()
-  if (!loading && session) return <Navigate to="/" replace />
+  if (!loading && session) return <Navigate to="/shop" replace />
   return (
     <AuthForm
       title="Welcome back"

@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
 import { LogOut, Moon, Package, ReceiptText, ShoppingBag, Store, Sun, Users } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
@@ -29,15 +29,15 @@ export default function Layout() {
     <div className="min-h-screen bg-muted/30">
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5">
-          <div className="flex items-center gap-2 font-semibold">
+          <Link to="/" className="flex items-center gap-2 font-semibold">
             <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
               <Store className="size-4" />
             </span>
-            <span className="hidden sm:inline">Tricore Store</span>
-          </div>
+            <span className="hidden sm:inline">Tricore IT Solutions</span>
+          </Link>
 
           <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
-            <NavLink to="/" end className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
+            <NavLink to="/shop" className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
             <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
             {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage products</NavLink>}
             {isAdmin && <NavLink to="/admin/orders" className={navClass}><Users className="size-4" />All orders</NavLink>}
@@ -67,7 +67,7 @@ export default function Layout() {
                 <DropdownMenuItem
                   onSelect={async () => {
                     await signOut()
-                    navigate('/login')
+                    navigate('/')
                   }}
                 >
                   <LogOut className="size-4" /> Sign out
@@ -79,7 +79,7 @@ export default function Layout() {
 
         {/* mobile nav */}
         <nav className="flex gap-1 overflow-x-auto border-t px-4 py-2 md:hidden" aria-label="Main mobile">
-          <NavLink to="/" end className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
+          <NavLink to="/shop" className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
           <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
           {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage</NavLink>}
           {isAdmin && <NavLink to="/admin/orders" className={navClass}><Users className="size-4" />All orders</NavLink>}

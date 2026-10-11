@@ -28,7 +28,7 @@ export default function AuthForm({ title, description, buttonLabel, footer }: Pr
     setError(null)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: `${window.location.origin}/shop` },
     })
     // On success the browser navigates to Google, so only errors return here.
     if (error) {
@@ -43,7 +43,7 @@ export default function AuthForm({ title, description, buttonLabel, footer }: Pr
         <div className="absolute -right-24 -top-24 size-80 rounded-full bg-white/10" />
         <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-white/5" />
         <div className="relative flex items-center gap-2 text-lg font-semibold">
-          <Store className="size-5" /> Tricore Store
+          <Store className="size-5" /> Tricore IT Solutions
         </div>
         <div className="relative space-y-6">
           <h2 className="max-w-md text-4xl font-semibold leading-tight tracking-tight">
