@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Lock, Send } from 'lucide-react'
+import { Loader2, Lock, Send, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { callSupportAi } from '@/lib/ai'
 import type { TicketComment } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -9,7 +10,7 @@ import { cn } from '@/lib/utils'
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-/** Comment thread plus reply box. Used by customers (My tickets) and by admins (Support tickets). */
+/** Comment thread plus reply box. Used by customers (Support) and by admins (Support tickets). */
 export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: {
   ticketId: string
   comments: TicketComment[]
@@ -19,6 +20,8 @@ export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: 
   const [body, setBody] = useState('')
   const [internal, setInternal] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [drafting, setDrafting] = useState(false)
+  const [notes, setNotes] = useState<{ items: string[]; confidence?: string } | null>(null)
 
   const post = async (e: FormEvent) => {
     e.preventDefault()
@@ -29,8 +32,24 @@ export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: 
     if (error) return void toast.error(error.message)
     setBody('')
     setInternal(false)
+    setNotes(null)
     toast.success(isAdmin && internal ? 'Internal note added' : 'Update posted')
     onPosted()
+  }
+
+  // Admin only: the AI writes a draft into the box. Nothing is sent until the admin presses Post.
+  const suggest = async () => {
+    setDrafting(true)
+    try {
+      const r = await callSupportAi('suggest_reply', ticketId)
+      setBody(r.reply ?? '')
+      setInternal(false)
+      setNotes({ items: r.agent_notes ?? [], confidence: r.confidence })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'The AI could not help right now.')
+    } finally {
+      setDrafting(false)
+    }
   }
 
   return (
@@ -65,17 +84,32 @@ export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: 
         <Textarea
           aria-label={isAdmin ? 'Write an update' : 'Write a reply'}
           placeholder={isAdmin ? 'Write an update for the customer…' : 'Write a reply…'}
-          rows={2}
+          rows={isAdmin && body.length > 160 ? 6 : 2}
           maxLength={2000}
           value={body}
           onChange={(e) => setBody(e.target.value)}
         />
+        {notes && (
+          <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-2 text-xs">
+            <p className="font-medium">AI draft. Please read and edit before posting{notes.confidence ? ` (confidence: ${notes.confidence})` : ''}.</p>
+            {notes.items.length > 0 && (
+              <ul className="mt-1 list-disc pl-4">
+                {notes.items.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           {isAdmin ? (
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
-              Internal note (the customer cannot see it)
-            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" size="lg" variant="outline" disabled={drafting} onClick={suggest}>
+                {drafting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Suggest reply
+              </Button>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
+                Internal note (the customer cannot see it)
+              </label>
+            </div>
           ) : (
             <span />
           )}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
-import { LogOut, LifeBuoy, Moon, Settings, Package, ReceiptText, ShoppingBag, Store, Sun, Users } from 'lucide-react'
+import { BookOpenText, LogOut, LifeBuoy, Moon, Settings, Package, ReceiptText, ShoppingBag, Store, Sun, Users } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -78,7 +78,8 @@ export default function Layout() {
               </NavLink>
             )}
             {isAdmin && <NavLink to="/admin/support" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
-            {isAdmin && <NavLink to="/admin/settings" className={navClass}><Settings className="size-4" />Payment</NavLink>}
+            {isAdmin && <NavLink to="/admin/settings" className={navClass}><Settings className="size-4" />Settings</NavLink>}
+            {isAdmin && <NavLink to="/admin/knowledge" className={navClass}><BookOpenText className="size-4" />Knowledge</NavLink>}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -128,7 +129,8 @@ export default function Layout() {
               </NavLink>
             )}
             {isAdmin && <NavLink to="/admin/support" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
-            {isAdmin && <NavLink to="/admin/settings" className={navClass}><Settings className="size-4" />Payment</NavLink>}
+            {isAdmin && <NavLink to="/admin/settings" className={navClass}><Settings className="size-4" />Settings</NavLink>}
+            {isAdmin && <NavLink to="/admin/knowledge" className={navClass}><BookOpenText className="size-4" />Knowledge</NavLink>}
         </nav>
       </header>
 

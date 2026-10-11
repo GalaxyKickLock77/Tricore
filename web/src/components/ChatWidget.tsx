@@ -324,8 +324,15 @@ function ContactOptions({ initialQuestion, reason, defaultContact, transcript, o
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const mailto = contact.email
-    ? `mailto:${contact.email}?subject=${encodeURIComponent('Tricore support request')}&body=${encodeURIComponent(
+  const [supportEmail, setSupportEmail] = useState(contact.email)
+  useEffect(() => {
+    supabase.rpc('get_support_email').then(({ data }) => {
+      if (typeof data === 'string' && data) setSupportEmail(data)
+    })
+  }, [])
+
+  const mailto = supportEmail
+    ? `mailto:${supportEmail}?subject=${encodeURIComponent('Tricore support request')}&body=${encodeURIComponent(
         `${initialQuestion || 'Hello, I need help with...'}\n\n--- Chat summary ---\n${transcript
           .slice(-6)
           .map((t) => `${t.role === 'user' ? 'Me' : 'Assistant'}: ${t.content}`)

@@ -12,6 +12,7 @@ import AdminSupport from './pages/AdminSupport'
 import MyTickets from './pages/MyTickets'
 import Checkout from './pages/Checkout'
 import AdminSettings from './pages/AdminSettings'
+import AdminKnowledge from './pages/AdminKnowledge'
 import ChatWidget from './components/ChatWidget'
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/admin/orders" element={<AdminOrders />} />
             <Route path="/admin/support" element={<AdminSupport />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
+            <Route path="/admin/knowledge" element={<AdminKnowledge />} />
           </Route>
         </Route>
       </Route>

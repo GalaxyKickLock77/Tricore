@@ -55,6 +55,8 @@ export default function AdminOrders() {
     setLoading(false)
   }
   useEffect(() => {
+    // cancel unpaid orders that are past the limit (fallback when the scheduled job is not available)
+    supabase.rpc('expire_unpaid_orders').then(() => load())
     load()
     // refresh when orders change (new order, payment submitted…)
     const ch = supabase.channel('admin-orders-page').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load()).subscribe()

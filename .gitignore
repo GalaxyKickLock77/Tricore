@@ -11,3 +11,6 @@ web/handler-out.txt
 .tmp-verify/
 web/fallback-out.txt
 .tmp-sql/
+.tmp-sql2/
+web/ai-out.txt
+web/mail-out.txt

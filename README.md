@@ -94,3 +94,28 @@ UPI transaction ID (UTR) -> admin checks the bank and confirms -> admin ships (c
 - **Important:** a UPI transaction ID typed by a customer is not proof of payment. Always match it against your bank statement
   before pressing "Confirm payment received". For automatic verification use a payment gateway (Razorpay, Cashfree, PhonePe).
 - The chat assistant can start an order but never places it: the customer finishes address and payment on the checkout page.
+
+## Less admin work: automatic cancel, emails and AI help
+**One-time setup**
+1. Run `supabase/migrations/20261013000000_automation.sql` in the Supabase SQL editor.
+2. Emails (optional but recommended). Pick any SMTP account (a Gmail address with an App Password works; so do Brevo, Zoho or Resend SMTP) and add these
+   Vercel environment variables (Production): `SMTP_HOST` (Gmail: `smtp.gmail.com`), `SMTP_PORT` (`465`), `SMTP_USER`, `SMTP_PASS`,
+   optionally `MAIL_FROM` (for example `Tricore IT Solutions <you@gmail.com>`). Then create the shared secret in the SQL editor:
+   `update public.app_config set value = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '') where key = 'notify_secret' returning value;`
+   Copy the value it shows into a Vercel variable named `NOTIFY_SECRET`, and run:
+   `update public.app_config set value = 'https://YOUR-SITE/api/notify' where key = 'notify_url';`
+   Redeploy after adding variables. Make sure the `pg_net` extension is on (Supabase: Database, Extensions).
+3. In the app (admin), open **Settings** and enter your support email and the hours after which unpaid orders are cancelled.
+
+**What runs automatically**
+- Unpaid orders are cancelled after the chosen hours, with the stock returned (every 30 minutes through `pg_cron` when enabled;
+  otherwise whenever an admin opens Orders).
+- Emails: customers get order placed, payment received or rejected, shipped (with tracking), delivered and cancelled; ticket opened
+  and every team reply (also for visitors who were not signed in, using the email they gave). Admins get new orders, payments to
+  verify, new tickets and customer replies. Internal notes are never emailed.
+- Admin **Support tickets**: "Suggest reply" writes a draft you edit before posting; "Summarise" adds a one-line summary,
+  category and priority and puts urgent tickets first; "Turn into a knowledge article" drafts an FAQ from a resolved ticket
+  (personal details removed) that you review and save. The AI never sends or decides anything on its own.
+- Admin **Knowledge** page: edit what the chat assistant knows.
+- Checks: `node --import ./scripts/ts-resolve.mjs scripts/mail-check.mts` (emails and endpoint security) and
+  `scripts/ai-check.mts` (AI helpers; makes a few real model calls) from `web/`.

@@ -70,7 +70,7 @@ export interface Address {
   pincode: string
 }
 
-export type StoreSettings = Record<'upi_id' | 'upi_name' | 'payment_note', string>
+export type StoreSettings = Record<'upi_id' | 'upi_name' | 'payment_note' | 'support_email' | 'unpaid_expiry_hours', string>
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved'
 
@@ -84,6 +84,9 @@ export interface Ticket {
   status: TicketStatus
   created_at: string
   updated_at: string
+  ai_summary: string | null
+  ai_category: string | null
+  ai_priority: 'low' | 'normal' | 'high' | 'urgent' | null
 }
 
 export interface TicketComment {

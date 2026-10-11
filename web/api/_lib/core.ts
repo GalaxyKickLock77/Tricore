@@ -208,9 +208,9 @@ ${productText}${ordersText}`
   return { system, idMap, contextText: `${articleText}\n${productText}\n${ordersText}` }
 }
 
-type GroqOutcome = { ok: true; content: string } | { ok: false; status: number }
+export type GroqOutcome = { ok: true; content: string } | { ok: false; status: number }
 
-async function callGroq(
+export async function callGroq(
   apiKey: string,
   model: (typeof MODELS)[number],
   messages: { role: string; content: string }[],
@@ -244,7 +244,7 @@ async function callGroq(
   }
 }
 
-function extractJson(raw: string): unknown {
+export function extractJson(raw: string): unknown {
   const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
   try {
     return JSON.parse(cleaned)
