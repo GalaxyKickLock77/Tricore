@@ -234,7 +234,7 @@ export default function ChatWidget() {
                   <p>
                     Your support ticket <b>#{sent.ref}</b> is open. Our team will reply to <b>{sent.contact}</b>.
                     {session ? (
-                      <> Follow the updates under <Link to="/tickets" className="underline">My tickets</Link>.</>
+                      <> Follow the updates on the <Link to="/tickets" className="underline">Support page</Link>.</>
                     ) : (
                       <> Sign in with Google to follow updates in the app.</>
                     )}

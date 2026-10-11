@@ -39,7 +39,7 @@ export default function Layout() {
           <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
             <NavLink to="/shop" className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
             <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
-            {!isAdmin && <NavLink to="/tickets" className={navClass}><LifeBuoy className="size-4" />My tickets</NavLink>}
+            {!isAdmin && <NavLink to="/tickets" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
             {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage products</NavLink>}
             {isAdmin && <NavLink to="/admin/orders" className={navClass}><Users className="size-4" />All orders</NavLink>}
             {isAdmin && <NavLink to="/admin/support" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
@@ -83,7 +83,7 @@ export default function Layout() {
         <nav className="flex gap-1 overflow-x-auto border-t px-4 py-2 md:hidden" aria-label="Main mobile">
           <NavLink to="/shop" className={navClass}><ShoppingBag className="size-4" />Products</NavLink>
           <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
-            {!isAdmin && <NavLink to="/tickets" className={navClass}><LifeBuoy className="size-4" />My tickets</NavLink>}
+            {!isAdmin && <NavLink to="/tickets" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
           {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage</NavLink>}
           {isAdmin && <NavLink to="/admin/orders" className={navClass}><Users className="size-4" />All orders</NavLink>}
             {isAdmin && <NavLink to="/admin/support" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
