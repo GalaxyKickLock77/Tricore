@@ -32,8 +32,12 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
   The model may only answer from that context.
 - **Accuracy checks (code, not just the prompt):** the reply must cite sources that exist in the retrieved context, and
   every price/number in the answer must appear in the context. Otherwise the bot hands the customer to the team.
-- **Human routing:** payments, discounts, delivery, returns/warranty, invoices, complaints, specific orders, anything not in
-  the knowledge base, or a direct request for a human creates a row in `support_requests` (admin page: **Support**).
+- **Human routing (ask first):** the assistant talks like a friendly shop assistant and answers from the knowledge base.
+  It cannot change prices, so when a customer wants a lower price, discount, coupon, bulk or special deal, it says so and
+  asks "Would you like me to connect you with my team?" (Yes / No buttons). Only a "yes", or an explicit request for a
+  person, opens the contact form, which creates a row in `support_requests` (admin page: **Support**).
+  Payment, delivery, returns and warranty questions are answered honestly from the knowledge base (the team confirms
+  these after the order); the bot never invents them. Unrelated questions get a short friendly redirect.
 - **Setup:**
   1. Fresh install: run `supabase/chatbot-setup.sql` in the Supabase SQL editor (chatbot migration + v2 + knowledge base).
      Already installed the first version? Just run `supabase/migrations/20261010010000_chat_context_v2.sql`.

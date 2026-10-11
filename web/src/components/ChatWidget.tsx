@@ -16,7 +16,7 @@ interface Msg {
 }
 
 interface BotReply {
-  action: 'answer' | 'handoff'
+  action: 'answer' | 'offer_team' | 'handoff'
   answer: string
   sources: { id: string; title: string }[]
   handoffReason?: string
@@ -29,6 +29,12 @@ const GREETING: Msg = {
 const SUGGESTIONS = ['What do you sell?', 'How do I place an order?', 'Where can I see my order status?']
 const HIDDEN_ON = ['/login', '/signup']
 
+/** The question the team should see: the latest user message that is not just a yes/no. */
+function lastTopic(msgs: Msg[], fallback: string): string {
+  const real = [...msgs].reverse().find((m) => m.role === 'user' && m.content.trim().length > 12)
+  return (real?.content ?? fallback).slice(0, 500)
+}
+
 export default function ChatWidget() {
   const { pathname } = useLocation()
   const { session } = useAuth()
@@ -37,12 +43,15 @@ export default function ChatWidget() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [handoff, setHandoff] = useState<{ question: string; reason: string } | null>(null)
+  const [offer, setOffer] = useState<{ question: string; reason: string } | null>(null)
   const [sent, setSent] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const meta = session?.user.user_metadata as { full_name?: string; name?: string } | undefined
+  const firstName = (meta?.full_name ?? meta?.name ?? '').trim().split(/\s+/)[0] || undefined
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, loading, handoff, sent, open])
+  }, [messages, loading, handoff, offer, sent, open])
 
   if (HIDDEN_ON.includes(pathname)) return null
 
@@ -52,6 +61,7 @@ export default function ChatWidget() {
     const next: Msg[] = [...messages, { role: 'user', content: question }]
     setMessages(next)
     setInput('')
+    setOffer(null)
     setLoading(true)
     try {
       const res = await fetch('/api/chat', {
@@ -60,21 +70,43 @@ export default function ChatWidget() {
         body: JSON.stringify({
           // skip the local greeting; send only recent turns
           messages: next.slice(1).slice(-6).map(({ role, content }) => ({ role, content })),
+          name: firstName,
         }),
       })
       if (!res.ok) throw new Error(String(res.status))
       const reply = (await res.json()) as BotReply
       setMessages((m) => [...m, { role: 'assistant', content: reply.answer, sources: reply.sources }])
-      if (reply.action === 'handoff') setHandoff({ question, reason: reply.handoffReason ?? '' })
+      if (reply.action === 'handoff') setHandoff({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
+      if (reply.action === 'offer_team') setOffer({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
     } catch {
       setMessages((m) => [
         ...m,
-        { role: 'assistant', content: "Sorry, I can't answer right now. I can connect you with the Tricore team instead." },
+        { role: 'assistant', content: "Sorry, I'm having trouble answering right now. Would you like me to connect you with my team?" },
       ])
-      setHandoff({ question, reason: 'assistant unavailable' })
+      setOffer({ question, reason: 'assistant unavailable' })
     } finally {
       setLoading(false)
     }
+  }
+
+  const acceptOffer = () => {
+    if (!offer) return
+    setMessages((m) => [
+      ...m,
+      { role: 'user', content: 'Yes, please connect me.' },
+      { role: 'assistant', content: "Great, I'll pass you to my team. Please leave your contact details and what you need." },
+    ])
+    setHandoff(offer)
+    setOffer(null)
+  }
+
+  const declineOffer = () => {
+    setMessages((m) => [
+      ...m,
+      { role: 'user', content: 'No thanks.' },
+      { role: 'assistant', content: 'No problem at all! If you change your mind, just say the word. Anything else I can help with?' },
+    ])
+    setOffer(null)
   }
 
   const onSubmit = (e: FormEvent) => {
@@ -83,6 +115,7 @@ export default function ChatWidget() {
   }
 
   const askHuman = () => {
+    setOffer(null)
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
     setMessages((m) => [...m, { role: 'assistant', content: 'Sure, let me connect you with the Tricore team.' }])
     setHandoff({ question: lastUser, reason: 'customer asked for a human' })
@@ -136,6 +169,13 @@ export default function ChatWidget() {
               {loading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Thinking…
+                </div>
+              )}
+
+              {offer && !loading && (
+                <div className="flex flex-wrap gap-2">
+                  <Button size="lg" onClick={acceptOffer}><Headset className="size-4" />Yes, connect me</Button>
+                  <Button size="lg" variant="outline" onClick={declineOffer}>No thanks</Button>
                 </div>
               )}
 

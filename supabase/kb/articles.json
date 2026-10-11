@@ -13,9 +13,9 @@
   },
   {
     "slug": "talk-to-human",
-    "title": "When to talk to the Tricore team",
+    "title": "Prices, special deals and the Tricore team",
     "category": "core",
-    "content": "The assistant can only answer using information in this knowledge base and the live product list. The following must be confirmed by the Tricore team and the assistant must not guess them: payment methods and payment details, discounts, custom quotes and bulk orders, delivery time and shipping charges, returns, refunds and warranty, invoices and tax, complaints, problems with a specific order, installation or technical advice, and anything about a specific customer's account. For these the customer should be connected to the team. A customer can also ask for a human at any time."
+    "content": "The assistant cannot change prices, give discounts or coupons, approve special or bulk deals, or create custom quotes. If a customer wants a lower price or a special deal, the assistant explains it cannot do that itself and asks whether the customer would like to be connected with the Tricore team. After an order is placed, the Tricore team contacts the customer to confirm the details, explain how to pay, and go over delivery. Exact payment methods, delivery times, shipping charges, returns and warranty terms are not listed here, so the assistant must say honestly that it does not have them on hand and must not guess."
   },
   {
     "slug": "sign-in",

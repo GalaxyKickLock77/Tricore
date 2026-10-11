@@ -1,4 +1,4 @@
-import { answerQuestion, handoff, quickReply, type ChatContext, type ChatMessage } from './_lib/core.js'
+import { answerQuestion, offer, routeFast, type ChatContext, type ChatMessage } from './_lib/core.js'
 import { FALLBACK_ARTICLES } from './_lib/fallback-kb.js'
 
 // Simple per-instance throttle (best effort on serverless): 15 requests / 10 min per IP.
@@ -38,10 +38,10 @@ export async function POST(request: Request): Promise<Response> {
 
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
   if (limited(ip)) {
-    return json(handoff('You are sending messages very quickly. Please wait a moment, or I can connect you with our team.', 'throttled'))
+    return json(offer('You are sending messages very quickly. Give me a moment, or would you like me to connect you with my team?', 'throttled'))
   }
 
-  let body: { messages?: unknown }
+  let body: { messages?: unknown; name?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -50,9 +50,12 @@ export async function POST(request: Request): Promise<Response> {
   const messages = clean(body.messages)
   if (!messages) return json({ error: 'Invalid request' }, 400)
 
-  const last0 = messages[messages.length - 1].content
-  const quick = quickReply(last0)
-  if (quick) return json(quick)
+  // Optional first name for a friendlier tone (letters only, short).
+  const rawName = typeof body.name === 'string' ? body.name.trim().split(/\s+/)[0] : ''
+  const name = /^[\p{L}'-]{2,24}$/u.test(rawName) ? rawName : undefined
+
+  const fast = routeFast(messages, name)
+  if (fast) return json(fast)
 
   // Retrieval (RAG): knowledge articles + live products from Supabase.
   const users = messages.filter((m) => m.role === 'user')
@@ -73,6 +76,6 @@ export async function POST(request: Request): Promise<Response> {
     context = { articles: FALLBACK_ARTICLES, products: [] }
   }
 
-  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey })
+  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name })
   return json(reply)
 }
