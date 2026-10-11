@@ -186,6 +186,7 @@ export function numbersAreGrounded(answer: string, allowedText: string): boolean
 /** Repairs spacing glitches some models produce (e.g. "clickBuy", "Myorders"). */
 export function tidy(text: string): string {
   return text
+    .replace(/[\u00a0\u2009\u200a\u202f]/g, ' ') // exotic spaces from the model -> normal space
     .replace(/\b(click|press|tap|open|choose|select)(?=[A-Z][a-z])/g, '$1 ')
     .replace(/\bMyorders\b/g, 'My orders')
 }
