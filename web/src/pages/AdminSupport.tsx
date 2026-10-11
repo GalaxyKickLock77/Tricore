@@ -215,6 +215,13 @@ export default function AdminSupport() {
                     </details>
                   )}
 
+                  {t.status === 'resolved' && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-500/10 p-2 text-sm">
+                      <span>This ticket is resolved. You can still post an update (the customer gets it), or reopen it if work continues.</span>
+                      <Button size="lg" variant="outline" onClick={() => setStatus(t.id, 'in_progress')}>Reopen</Button>
+                    </div>
+                  )}
+
                   <TicketThread ticketId={t.id} comments={byTicket.get(t.id) ?? []} isAdmin onPosted={load} />
 
                   {t.status === 'resolved' && (
