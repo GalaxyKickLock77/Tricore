@@ -30,6 +30,9 @@ export const FALLBACK_ARTICLES: KbArticle[] = ${JSON.stringify(
 writeFileSync(new URL('../api/_lib/fallback-kb.ts', import.meta.url), fallback)
 
 // One file to paste into the Supabase SQL editor: migration + knowledge base seed.
-const migration = readFileSync(new URL('../../supabase/migrations/20261010000000_chatbot.sql', import.meta.url), 'utf8')
-writeFileSync(new URL('../../supabase/chatbot-setup.sql', import.meta.url), `${migration}\n\n${sql}`)
+const read = (n) => readFileSync(new URL(`../../supabase/migrations/${n}`, import.meta.url), 'utf8')
+writeFileSync(
+  new URL('../../supabase/chatbot-setup.sql', import.meta.url),
+  `${read('20261010000000_chatbot.sql')}\n\n${read('20261010010000_chat_context_v2.sql')}\n\n${sql}`,
+)
 console.log('Wrote fallback-kb.ts and chatbot-setup.sql')

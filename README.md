@@ -35,7 +35,8 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 - **Human routing:** payments, discounts, delivery, returns/warranty, invoices, complaints, specific orders, anything not in
   the knowledge base, or a direct request for a human creates a row in `support_requests` (admin page: **Support**).
 - **Setup:**
-  1. Run `supabase/migrations/20261010000000_chatbot.sql`, then `supabase/seed_kb.sql` in the Supabase SQL editor.
+  1. Fresh install: run `supabase/chatbot-setup.sql` in the Supabase SQL editor (chatbot migration + v2 + knowledge base).
+     Already installed the first version? Just run `supabase/migrations/20261010010000_chat_context_v2.sql`.
   2. Set `GROQ_API_KEY` in Vercel (Production + Preview, type Sensitive). Never commit it or use a `VITE_` prefix.
   3. Edit the knowledge base: Supabase Table Editor, `kb_articles` (or edit `supabase/kb/articles.json`,
      run `node web/scripts/gen-kb-sql.mjs`, and run the generated `supabase/seed_kb.sql`).
