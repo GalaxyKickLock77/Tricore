@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Copy, Loader2, Smartphone } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth'
 import { buildUpiLink } from '@/lib/payments'
 import { money, orderRef } from '@/lib/format'
 import type { StoreSettings } from '@/lib/types'
@@ -20,11 +22,15 @@ export default function PaymentPanel({ orderId, total, settings, onSubmitted }: 
   const [utr, setUtr] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { profile } = useAuth()
 
   if (!settings.upi_id) {
     return (
       <p className="rounded-lg bg-amber-500/10 p-3 text-sm">
         Online payment details are not set up yet. Your order is saved; our team will contact you with the payment details.
+        {profile?.role === 'admin' && (
+          <> <b>Admin:</b> add your UPI ID on the <Link to="/admin/settings" className="underline">Payment settings</Link> page and GPay payment will appear here.</>
+        )}
       </p>
     )
   }
