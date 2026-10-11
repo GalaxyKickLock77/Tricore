@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bot, CheckCircle2, Headset, Loader2, MessageCircle, Send, ShoppingBag, X } from 'lucide-react'
+import { Bot, CheckCircle2, Headset, LifeBuoy, Loader2, Mail, MessageCircle, Send, ShoppingBag, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
+import { contact } from '@/config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -54,7 +55,7 @@ export default function ChatWidget() {
   const [handoff, setHandoff] = useState<{ question: string; reason: string } | null>(null)
   const [proposal, setProposal] = useState<OrderProposal | null>(null)
   const [offer, setOffer] = useState<{ question: string; reason: string } | null>(null)
-  const [sent, setSent] = useState<string | null>(null)
+  const [sent, setSent] = useState<{ ref: string; contact: string } | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const memoryRef = useRef<string[]>([])
   const meta = session?.user.user_metadata as { full_name?: string; name?: string } | undefined
@@ -112,7 +113,7 @@ export default function ChatWidget() {
     setMessages((m) => [
       ...m,
       { role: 'user', content: 'Yes, please connect me.' },
-      { role: 'assistant', content: "Great, I'll pass you to my team. Please leave your contact details and what you need." },
+      { role: 'assistant', content: 'Great, let\'s get you to my team. You can open a support ticket right here, or email them directly. Whichever you prefer.' },
     ])
     setHandoff(offer)
     setOffer(null)
@@ -214,14 +215,14 @@ export default function ChatWidget() {
               )}
 
               {handoff && !sent && (
-                <HandoffForm
+                <ContactOptions
                   key={handoff.question}
                   initialQuestion={handoff.question}
                   reason={handoff.reason}
                   defaultContact={session?.user.email ?? ''}
                   transcript={messages.slice(-12).map(({ role, content }) => ({ role, content }))}
-                  onDone={(contact) => {
-                    setSent(contact)
+                  onDone={(ref, contactValue) => {
+                    setSent({ ref, contact: contactValue })
                     setHandoff(null)
                   }}
                   onCancel={() => setHandoff(null)}
@@ -230,7 +231,9 @@ export default function ChatWidget() {
               {sent && (
                 <div className="flex items-start gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
                   <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
-                  <p>Thanks! Our team has your request and will contact you at <b>{sent}</b>.</p>
+                  <p>
+                    Your support ticket <b>#{sent.ref}</b> is open. Our team will reply to <b>{sent.contact}</b>.
+                  </p>
                 </div>
               )}
               <div ref={endRef} />
@@ -247,7 +250,7 @@ export default function ChatWidget() {
               {!handoff && !sent && (
                 <button type="button" onClick={askHuman}
                   className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-                  <Headset className="size-3.5" /> Talk to the Tricore team
+                  <Headset className="size-3.5" /> Contact the team
                 </button>
               )}
             </div>
@@ -324,47 +327,75 @@ function OrderConfirm({ proposal, signedIn, onDone, onCancel }: {
   )
 }
 
-function HandoffForm({ initialQuestion, reason, defaultContact, transcript, onDone, onCancel }: {
+/** The only two ways to reach the team: open a support ticket, or send an email. */
+function ContactOptions({ initialQuestion, reason, defaultContact, transcript, onDone, onCancel }: {
   initialQuestion: string
   reason: string
   defaultContact: string
   transcript: { role: string; content: string }[]
-  onDone: (contact: string) => void
+  onDone: (ref: string, contact: string) => void
   onCancel: () => void
 }) {
-  const [contact, setContact] = useState(defaultContact)
+  const [mode, setMode] = useState<'choose' | 'ticket'>('choose')
+  const [email, setEmail] = useState(defaultContact)
   const [question, setQuestion] = useState(initialQuestion)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const mailto = contact.email
+    ? `mailto:${contact.email}?subject=${encodeURIComponent('Tricore support request')}&body=${encodeURIComponent(
+        `${initialQuestion || 'Hello, I need help with...'}\n\n--- Chat summary ---\n${transcript
+          .slice(-6)
+          .map((t) => `${t.role === 'user' ? 'Me' : 'Assistant'}: ${t.content}`)
+          .join('\n')}`.slice(0, 1500),
+      )}`
+    : null
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    const { error } = await supabase.rpc('create_support_request', {
-      p_contact: contact,
+    const { data, error } = await supabase.rpc('create_support_request', {
+      p_contact: email,
       p_question: question,
       p_reason: reason || null,
       p_transcript: transcript,
     })
     setBusy(false)
     if (error) setError(error.message)
-    else onDone(contact.trim())
+    else onDone(String(data ?? '').slice(0, 8).toUpperCase(), email.trim())
+  }
+
+  if (mode === 'choose') {
+    return (
+      <div className="space-y-2 rounded-xl border bg-card p-3 text-sm">
+        <p className="flex items-center gap-1.5 font-medium"><Headset className="size-4 text-primary" /> Reach our team</p>
+        <Button size="lg" className="w-full justify-start" onClick={() => setMode('ticket')}>
+          <LifeBuoy className="size-4" /> Open a support ticket
+        </Button>
+        {mailto && (
+          <Button asChild size="lg" variant="outline" className="w-full justify-start">
+            <a href={mailto}><Mail className="size-4" /> Email us</a>
+          </Button>
+        )}
+        <button type="button" onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">Not now</button>
+      </div>
+    )
   }
 
   return (
     <form onSubmit={submit} className="space-y-2 rounded-xl border bg-card p-3 text-sm">
-      <p className="flex items-center gap-1.5 font-medium"><Headset className="size-4 text-primary" /> Send this to our team</p>
-      <label className="block text-xs text-muted-foreground" htmlFor="hf-contact">Your email or phone</label>
-      <Input id="hf-contact" required minLength={3} maxLength={200} value={contact} onChange={(e) => setContact(e.target.value)} />
-      <label className="block text-xs text-muted-foreground" htmlFor="hf-q">What do you need help with?</label>
-      <Textarea id="hf-q" required maxLength={2000} rows={3} value={question} onChange={(e) => setQuestion(e.target.value)} />
+      <p className="flex items-center gap-1.5 font-medium"><LifeBuoy className="size-4 text-primary" /> Open a support ticket</p>
+      <label className="block text-xs text-muted-foreground" htmlFor="tk-email">Your email</label>
+      <Input id="tk-email" type="email" required maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} />
+      <label className="block text-xs text-muted-foreground" htmlFor="tk-q">What do you need help with?</label>
+      <Textarea id="tk-q" required maxLength={2000} rows={3} value={question} onChange={(e) => setQuestion(e.target.value)} />
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="lg" disabled={busy} className="flex-1">
-          {busy && <Loader2 className="size-4 animate-spin" />} Send to team
+          {busy && <Loader2 className="size-4 animate-spin" />} Open ticket
         </Button>
-        <Button type="button" size="lg" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="button" size="lg" variant="outline" onClick={() => setMode('choose')}>Back</Button>
       </div>
     </form>
   )

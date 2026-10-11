@@ -112,7 +112,7 @@ export function routeFast(messages: ChatMessage[], name?: string): BotReply | nu
     if (YES_RE.test(last)) {
       return reply(
         'handoff',
-        "Great, I'll pass you to my team. Please leave your email or phone number and what you need, and they'll get back to you.",
+        "Great, let's get you to my team. You can open a support ticket right here, or email them directly. Whichever you prefer.",
         'question',
         'customer accepted the offer to talk to the team',
       )
@@ -124,7 +124,7 @@ export function routeFast(messages: ChatMessage[], name?: string): BotReply | nu
   if (HUMAN_RE.test(last)) {
     return reply(
       'handoff',
-      "Of course! Leave your email or phone number and what you need, and my team will get in touch with you.",
+      "Of course! You can open a support ticket right here, or email my team directly. Whichever you prefer.",
       'question',
       'customer asked for a person',
     )

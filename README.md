@@ -35,7 +35,8 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 - **Human routing (ask first):** the assistant talks like a friendly shop assistant and answers from the knowledge base.
   It cannot change prices, so when a customer wants a lower price, discount, coupon, bulk or special deal, it says so and
   asks "Would you like me to connect you with my team?" (Yes / No buttons). Only a "yes", or an explicit request for a
-  person, opens the contact form, which creates a row in `support_requests` (admin page: **Support**).
+  person, shows the two contact options: **Open a support ticket** (creates a row in `support_requests`, admin page:
+  **Support**, with a ticket number) or **Email us** (a mailto link; set `contact.email` in `web/src/config.ts`).
   Payment, delivery, returns and warranty questions are answered honestly from the knowledge base (the team confirms
   these after the order); the bot never invents them. Unrelated questions get a short friendly redirect.
 - **Setup:**

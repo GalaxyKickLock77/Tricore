@@ -46,11 +46,11 @@ export default function AdminSupport() {
   const open = items.filter((i) => i.status === 'open').length
 
   return (
-    <Page title="Support requests" description={`${open} open. Customers the assistant handed over to the team.`}>
+    <Page title="Support tickets" description={`${open} open. Customers the assistant handed over to the team.`}>
       {loading ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : items.length === 0 ? (
-        <EmptyState icon={<LifeBuoy />} title="No support requests yet" hint="Requests appear here when the assistant hands a customer to the team." />
+        <EmptyState icon={<LifeBuoy />} title="No support tickets yet" hint="Tickets appear here when a customer opens one from the chat." />
       ) : (
         <div className="space-y-3">
           {items.map((r) => (
@@ -59,6 +59,7 @@ export default function AdminSupport() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge variant={r.status === 'open' ? 'default' : 'secondary'} className="capitalize">{r.status}</Badge>
+                    <span className="font-mono text-xs text-muted-foreground">#{r.id.slice(0, 8).toUpperCase()}</span>
                     <span className="font-medium">{r.contact}</span>
                     <span className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</span>
                   </div>
