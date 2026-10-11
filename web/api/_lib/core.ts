@@ -183,6 +183,13 @@ export function numbersAreGrounded(answer: string, allowedText: string): boolean
   return true
 }
 
+/** Repairs spacing glitches some models produce (e.g. "clickBuy", "Myorders"). */
+export function tidy(text: string): string {
+  return text
+    .replace(/\b(click|press|tap|open|choose|select)(?=[A-Z][a-z])/g, '$1 ')
+    .replace(/\bMyorders\b/g, 'My orders')
+}
+
 const FORBIDDEN = /(gsk_[a-z0-9]+|system prompt|api[_ ]?key)/i
 
 export async function answerQuestion(opts: {
@@ -222,7 +229,7 @@ export async function answerQuestion(opts: {
   const intent = (['greeting', 'offtopic', 'question'] as const).includes(parsed.intent as never)
     ? (parsed.intent as BotReply['intent'])
     : 'question'
-  const answer = parsed.answer.trim().slice(0, 1200)
+  const answer = tidy(parsed.answer.trim().slice(0, 1200))
   const sources = (Array.isArray(parsed.sources) ? parsed.sources : [])
     .filter((s): s is string => typeof s === 'string' && idMap.has(s))
     .filter((s, i, a) => a.indexOf(s) === i)
