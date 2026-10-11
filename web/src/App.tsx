@@ -8,9 +8,12 @@ import Products from './pages/Products'
 import MyOrders from './pages/MyOrders'
 import AdminProducts from './pages/AdminProducts'
 import AdminOrders from './pages/AdminOrders'
+import AdminSupport from './pages/AdminSupport'
+import ChatWidget from './components/ChatWidget'
 
 export default function App() {
   return (
+    <>
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
@@ -22,10 +25,13 @@ export default function App() {
           <Route element={<RequireAdmin />}>
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/admin/orders" element={<AdminOrders />} />
+            <Route path="/admin/support" element={<AdminSupport />} />
           </Route>
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    <ChatWidget />
+    </>
   )
 }

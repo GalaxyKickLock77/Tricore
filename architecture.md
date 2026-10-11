@@ -11,13 +11,21 @@ flowchart TD
     subgraph Cloud["Supabase Cloud"]
         Auth["Auth — Google sign-in and sign-up"]
         API["Data API — read and write records"]
-        DB["PostgreSQL — user data and access policies"]
+        DB["PostgreSQL — user data, knowledge base and access policies"]
     end
+
+    subgraph Vercel["Vercel"]
+        Chat["/api/chat — retrieval, Groq call, answer verification"]
+    end
+    Groq["Groq API — gpt-oss-120b"]
 
     Browser -->|"Load website"| Web
     Browser -->|"Sign in"| Auth
     Browser -->|"Requests with user token"| API
     API --> DB
+    Browser -->|"Chat question"| Chat
+    Chat -->|"chat_context() RAG lookup"| API
+    Chat --> Groq
 ```
 
 The Docker container serves the website files. React then runs in the browser and connects directly to Supabase. This setup supports your basic data operations without a separate backend API. [Supabase Docs](https://supabase.com/docs/guides/getting-started/quickstarts/reactjs?utm_source=chatgpt.com)

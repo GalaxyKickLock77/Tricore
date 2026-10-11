@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { LogOut, Moon, Package, ReceiptText, ShoppingBag, Store, Sun, Users } from 'lucide-react'
+import { LogOut, LifeBuoy, Moon, Package, ReceiptText, ShoppingBag, Store, Sun, Users } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -41,6 +41,7 @@ export default function Layout() {
             <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
             {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage products</NavLink>}
             {isAdmin && <NavLink to="/admin/orders" className={navClass}><Users className="size-4" />All orders</NavLink>}
+            {isAdmin && <NavLink to="/admin/support" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -83,6 +84,7 @@ export default function Layout() {
           <NavLink to="/orders" className={navClass}><ReceiptText className="size-4" />My orders</NavLink>
           {isAdmin && <NavLink to="/admin/products" className={navClass}><Package className="size-4" />Manage</NavLink>}
           {isAdmin && <NavLink to="/admin/orders" className={navClass}><Users className="size-4" />All orders</NavLink>}
+            {isAdmin && <NavLink to="/admin/support" className={navClass}><LifeBuoy className="size-4" />Support</NavLink>}
         </nav>
       </header>
 

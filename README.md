@@ -23,3 +23,20 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 - main: build and push image to `ghcr.io/<owner>/<repo>/web`, then `supabase db push` for migrations.
 - Configure repo **variables** `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and in the `production`
   environment: variable `SUPABASE_PROJECT_REF`, secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`.
+
+## AI assistant (chat widget)
+- **Where:** floating chat button on every page. Backend: `web/api/chat.ts` (Vercel serverless function) calling Groq
+  (`openai/gpt-oss-120b`, falling back to `qwen/qwen3.8-27b` then `openai/gpt-oss-20b`; all on Groq's free tier).
+- **RAG:** the function calls the Supabase RPC `chat_context()`, which returns relevant knowledge articles
+  (`kb_articles`, Postgres full-text search; articles with category `core` are always included) plus the live product list.
+  The model may only answer from that context.
+- **Accuracy checks (code, not just the prompt):** the reply must cite sources that exist in the retrieved context, and
+  every price/number in the answer must appear in the context. Otherwise the bot hands the customer to the team.
+- **Human routing:** payments, discounts, delivery, returns/warranty, invoices, complaints, specific orders, anything not in
+  the knowledge base, or a direct request for a human creates a row in `support_requests` (admin page: **Support**).
+- **Setup:**
+  1. Run `supabase/migrations/20261010000000_chatbot.sql`, then `supabase/seed_kb.sql` in the Supabase SQL editor.
+  2. Set `GROQ_API_KEY` in Vercel (Production + Preview, type Sensitive). Never commit it or use a `VITE_` prefix.
+  3. Edit the knowledge base: Supabase Table Editor, `kb_articles` (or edit `supabase/kb/articles.json`,
+     run `node web/scripts/gen-kb-sql.mjs`, and run the generated `supabase/seed_kb.sql`).
+- **Evaluate:** from `web/`: `node --env-file=.env.local scripts/eval-chat.mts` (22 questions against the real model).

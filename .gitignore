@@ -6,3 +6,6 @@ dist
 supabase/.temp
 Tricore_details/
 *.tsbuildinfo
+web/eval-out.txt
+web/handler-out.txt
+.tmp-verify/

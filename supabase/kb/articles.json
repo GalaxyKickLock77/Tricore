@@ -1,0 +1,38 @@
+[
+  {
+    "slug": "about-tricore",
+    "title": "About Tricore IT Solutions",
+    "category": "core",
+    "content": "Tricore IT Solutions is an online store for IT products. Customers browse the catalog, place an order, and the Tricore team contacts them to confirm the details. After payment is received by the team, the admin ships the product to the customer. Product categories shown on the website are: Laptops and Desktops, Networking, Servers and Storage, Security and CCTV, Peripherals, and Software and Licenses. The exact products, prices and stock that are currently available are listed in the PRODUCTS section of the context."
+  },
+  {
+    "slug": "how-ordering-works",
+    "title": "How ordering works",
+    "category": "core",
+    "content": "Step 1: Sign in with your Google account and open the Shop. Step 2: Choose a product in the Shop and click Buy, which places an order for one unit. Step 3: The Tricore team contacts you to confirm the details. Step 4: You complete the payment with the team. The team starts shipping only after the payment is received. Step 5: The admin ships your order to you and the status is updated in your account. Customers can see all their orders under My orders after signing in."
+  },
+  {
+    "slug": "talk-to-human",
+    "title": "When to talk to the Tricore team",
+    "category": "core",
+    "content": "The assistant can only answer using information in this knowledge base and the live product list. The following must be confirmed by the Tricore team and the assistant must not guess them: payment methods and payment details, discounts, custom quotes and bulk orders, delivery time and shipping charges, returns, refunds and warranty, invoices and tax, complaints, problems with a specific order, installation or technical advice, and anything about a specific customer's account. For these the customer should be connected to the team. A customer can also ask for a human at any time."
+  },
+  {
+    "slug": "sign-in",
+    "title": "Signing in and creating an account",
+    "category": "general",
+    "content": "Tricore uses Google sign-in only. There is no separate password. New customers create their account by clicking Sign up with Google, and returning customers click Sign in with Google. You must be signed in to open the Shop and to see your orders. The landing page and this assistant are available without signing in."
+  },
+  {
+    "slug": "order-status",
+    "title": "Order status meanings",
+    "category": "general",
+    "content": "After signing in, customers can see their orders and their status under My orders. Status pending means the order was received and is waiting for the team to confirm it and receive payment. Status paid means the payment was received. Status shipped means the order has been dispatched to the customer. Status cancelled means the order was cancelled."
+  },
+  {
+    "slug": "products-and-stock",
+    "title": "Products, prices and availability",
+    "category": "general",
+    "content": "Products, prices and availability are shown in the Shop and in the PRODUCTS section of the context. Prices are shown in US dollars. A product marked out of stock cannot be ordered. Low stock means only a few units are left. The stock count goes down when an order is placed."
+  }
+]
