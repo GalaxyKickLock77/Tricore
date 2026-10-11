@@ -1,21 +1,16 @@
-import { useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import AuthForm from '../components/AuthForm'
-import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 export default function Login() {
-  const navigate = useNavigate()
+  const { session, loading } = useAuth()
+  if (!loading && session) return <Navigate to="/" replace />
   return (
     <AuthForm
       title="Welcome back"
-      description="Sign in to your account"
-      submitLabel="Sign in"
-      footer={{ text: 'No account?', to: '/signup', label: 'Sign up' }}
-      onSubmit={async ({ email, password }) => {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) return error.message
-        navigate('/')
-        return null
-      }}
+      description="Sign in with your Google account"
+      buttonLabel="Sign in with Google"
+      footer={{ text: 'New here?', to: '/signup', label: 'Sign up' }}
     />
   )
 }

@@ -1,43 +1,16 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { MailCheck } from 'lucide-react'
+import { Navigate } from 'react-router-dom'
 import AuthForm from '../components/AuthForm'
-import { supabase } from '../lib/supabase'
-import { Button } from '@/components/ui/button'
-import { Link } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
 
 export default function Signup() {
-  const navigate = useNavigate()
-  const [notice, setNotice] = useState<string | null>(null)
-
-  if (notice) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted/30 p-4 text-center">
-        <MailCheck className="size-10 text-primary" />
-        <p className="max-w-sm">{notice}</p>
-        <Button asChild variant="outline"><Link to="/login">Go to sign in</Link></Button>
-      </div>
-    )
-  }
-
+  const { session, loading } = useAuth()
+  if (!loading && session) return <Navigate to="/" replace />
   return (
     <AuthForm
-      title="Create account"
-      description="Join to start shopping"
-      submitLabel="Sign up"
-      showName
+      title="Create your account"
+      description="Sign up in one click with your Google account"
+      buttonLabel="Sign up with Google"
       footer={{ text: 'Already registered?', to: '/login', label: 'Sign in' }}
-      onSubmit={async ({ email, password, fullName }) => {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName } },
-        })
-        if (error) return error.message
-        if (data.session) navigate('/')
-        else setNotice('Check your email to confirm your account, then sign in.')
-        return null
-      }}
     />
   )
 }

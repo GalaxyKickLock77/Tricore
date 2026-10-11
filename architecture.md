@@ -9,7 +9,7 @@ flowchart TD
     end
 
     subgraph Cloud["Supabase Cloud"]
-        Auth["Auth — signup and login"]
+        Auth["Auth — Google sign-in and sign-up"]
         API["Data API — read and write records"]
         DB["PostgreSQL — user data and access policies"]
     end
@@ -27,7 +27,7 @@ You’ll also need:
 | Component | Purpose |
 |---|---|
 | React Router | Login, dashboard, and form pages |
-| Supabase Auth | User accounts and sessions |
+| Supabase Auth (Google provider) | User accounts and sessions via Google sign-in |
 | Database schema | Tables, relationships, and a user ID on owned records |
 | Row Level Security | Ensure users can access only their permitted records |
 | Dockerfile and Nginx configuration | Build and serve React, including page refresh support |

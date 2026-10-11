@@ -1,42 +1,40 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, Store, Truck, User } from 'lucide-react'
+import { Loader2, ShieldCheck, Store, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { supabase } from '@/lib/supabase'
 
 interface Props {
   title: string
   description: string
-  submitLabel: string
-  showName?: boolean
-  onSubmit: (v: { email: string; password: string; fullName: string }) => Promise<string | null>
+  buttonLabel: string
   footer: { text: string; to: string; label: string }
 }
 
 const perks = [
-  { icon: ShieldCheck, text: 'Secure sign-in and private order history' },
+  { icon: ShieldCheck, text: 'Secure sign-in with your Google account' },
   { icon: Truck, text: 'Track every order from pending to shipped' },
   { icon: Store, text: 'Fresh products added by our team' },
 ]
 
-export default function AuthForm({ title, description, submitLabel, showName, onSubmit, footer }: Props) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
-  const [show, setShow] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export default function AuthForm({ title, description, buttonLabel, footer }: Props) {
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
+  const google = async () => {
     setBusy(true)
     setError(null)
-    const err = await onSubmit({ email, password, fullName })
-    if (err) setError(err)
-    setBusy(false)
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    })
+    // On success the browser navigates to Google, so only errors return here.
+    if (error) {
+      setError(error.message)
+      setBusy(false)
+    }
   }
 
   return (
@@ -74,50 +72,25 @@ export default function AuthForm({ title, description, submitLabel, showName, on
               <CardTitle className="text-xl">{title}</CardTitle>
               <CardDescription>{description}</CardDescription>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={submit} className="space-y-4">
-                {showName && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="name">Full name</Label>
-                    <div className="relative">
-                      <User className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                      <Input id="name" className="pl-8" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-                    </div>
-                  </div>
+            <CardContent className="space-y-4">
+              <Button type="button" size="lg" variant="outline" className="h-10 w-full" disabled={busy} onClick={google}>
+                {busy ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.7v3h3.9c2.3-2.1 3.5-5.2 3.5-8.9z" />
+                    <path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1.1.7-2.5 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1A12 12 0 0 0 12 24z" />
+                    <path fill="#FBBC05" d="M5.4 14.4a7.2 7.2 0 0 1 0-4.8V6.5H1.4a12 12 0 0 0 0 11l4-3.1z" />
+                    <path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.4 6.5l4 3.1C6.3 6.9 8.9 4.8 12 4.8z" />
+                  </svg>
                 )}
-                <div className="space-y-1.5">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                    <Input id="email" type="email" required autoComplete="email" className="pl-8"
-                      value={email} onChange={(e) => setEmail(e.target.value)} />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                    <Input id="password" type={show ? 'text' : 'password'} required minLength={8}
-                      autoComplete={showName ? 'new-password' : 'current-password'} className="px-8"
-                      value={password} onChange={(e) => setPassword(e.target.value)} />
-                    <button type="button" aria-label={show ? 'Hide password' : 'Show password'}
-                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
-                      onClick={() => setShow((s) => !s)}>
-                      {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
-                  {showName && <p className="text-xs text-muted-foreground">At least 8 characters.</p>}
-                </div>
-                {error && <p role="alert" className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">{error}</p>}
-                <Button type="submit" disabled={busy} className="w-full">
-                  {busy && <Loader2 className="size-4 animate-spin" />}
-                  {busy ? 'Please wait…' : submitLabel}
-                </Button>
-                <p className="text-center text-sm text-muted-foreground">
-                  {footer.text}{' '}
-                  <Link className="font-medium text-primary underline-offset-4 hover:underline" to={footer.to}>{footer.label}</Link>
-                </p>
-              </form>
+                {buttonLabel}
+              </Button>
+              {error && <p role="alert" className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">{error}</p>}
+              <p className="text-center text-sm text-muted-foreground">
+                {footer.text}{' '}
+                <Link className="font-medium text-primary underline-offset-4 hover:underline" to={footer.to}>{footer.label}</Link>
+              </p>
             </CardContent>
           </Card>
         </motion.div>
