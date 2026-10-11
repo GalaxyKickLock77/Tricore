@@ -1,4 +1,5 @@
-import { answerQuestion, handoff, type ChatContext, type ChatMessage } from './_lib/core.js'
+import { answerQuestion, handoff, quickReply, type ChatContext, type ChatMessage } from './_lib/core.js'
+import { FALLBACK_ARTICLES } from './_lib/fallback-kb.js'
 
 // Simple per-instance throttle (best effort on serverless): 15 requests / 10 min per IP.
 const hits = new Map<string, number[]>()
@@ -49,6 +50,10 @@ export async function POST(request: Request): Promise<Response> {
   const messages = clean(body.messages)
   if (!messages) return json({ error: 'Invalid request' }, 400)
 
+  const last0 = messages[messages.length - 1].content
+  const quick = quickReply(last0)
+  if (quick) return json(quick)
+
   // Retrieval (RAG): knowledge articles + live products from Supabase.
   const users = messages.filter((m) => m.role === 'user')
   const last = users[users.length - 1].content
@@ -64,7 +69,8 @@ export async function POST(request: Request): Promise<Response> {
     if (!res.ok) throw new Error(String(res.status))
     context = (await res.json()) as ChatContext
   } catch {
-    return json(handoff("I couldn't load our information just now, so I'll connect you with the Tricore team.", 'retrieval failed'))
+    // Database unreachable: still answer basics from the built-in core articles, never about products.
+    context = { articles: FALLBACK_ARTICLES, products: [] }
   }
 
   const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey })

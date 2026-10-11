@@ -40,6 +40,27 @@ const HANDOFF_BUSY =
 const HANDOFF_UNSURE =
   "I want to be sure you get accurate information, so I'll connect you with the Tricore team."
 
+const GREETING_RE = /^\s*(hi+|hello+|hey+|hola|good\s+(morning|afternoon|evening)|namaste|vanakkam)\s*[!.?]*\s*$/i
+const THANKS_RE = /^\s*(thanks?|thank\s+you|thx|ok(ay)?|great|cool)\s*[!.?]*\s*$/i
+
+/** Replies to pure greetings/thanks without calling the model (instant and saves free-tier tokens). */
+export function quickReply(text: string): BotReply | null {
+  if (GREETING_RE.test(text)) {
+    return {
+      action: 'answer',
+      intent: 'greeting',
+      answer:
+        'Hello! Welcome to Tricore IT Solutions. I can tell you about our products, how ordering works, or help you reach our team. What would you like to know?',
+      sources: [],
+      verified: true,
+    }
+  }
+  if (THANKS_RE.test(text)) {
+    return { action: 'answer', intent: 'greeting', answer: "You're welcome! Anything else I can help you with?", sources: [], verified: true }
+  }
+  return null
+}
+
 export function handoff(answer: string, reason: string): BotReply {
   return { action: 'handoff', answer, intent: 'question', sources: [], verified: true, handoffReason: reason }
 }

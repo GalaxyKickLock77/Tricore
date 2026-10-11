@@ -16,3 +16,20 @@ on conflict (slug) do update
 `
 writeFileSync(new URL('../../supabase/seed_kb.sql', import.meta.url), sql)
 console.log(`Wrote seed_kb.sql with ${articles.length} articles`)
+
+// Built-in copy used by /api/chat only when the database is unreachable (so the bot still answers basics).
+const fallback = `// GENERATED from supabase/kb/articles.json by web/scripts/gen-kb-sql.mjs. Do not edit by hand.
+import type { KbArticle } from './core.js'
+
+export const FALLBACK_ARTICLES: KbArticle[] = ${JSON.stringify(
+  articles.filter((a) => a.category === 'core').map((a) => ({ id: a.slug, title: a.title, content: a.content })),
+  null,
+  2,
+)}
+`
+writeFileSync(new URL('../api/_lib/fallback-kb.ts', import.meta.url), fallback)
+
+// One file to paste into the Supabase SQL editor: migration + knowledge base seed.
+const migration = readFileSync(new URL('../../supabase/migrations/20261010000000_chatbot.sql', import.meta.url), 'utf8')
+writeFileSync(new URL('../../supabase/chatbot-setup.sql', import.meta.url), `${migration}\n\n${sql}`)
+console.log('Wrote fallback-kb.ts and chatbot-setup.sql')
