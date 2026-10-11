@@ -31,3 +31,26 @@ export interface Order {
   products?: { name: string } | null
   profiles?: { email: string | null } | null
 }
+
+export type TicketStatus = 'open' | 'in_progress' | 'resolved'
+
+export interface Ticket {
+  id: string
+  user_id: string | null
+  contact: string
+  question: string
+  reason: string | null
+  transcript: { role: string; content: string }[]
+  status: TicketStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface TicketComment {
+  id: string
+  ticket_id: string
+  author_role: 'admin' | 'customer'
+  body: string
+  is_internal: boolean
+  created_at: string
+}

@@ -233,6 +233,11 @@ export default function ChatWidget() {
                   <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
                   <p>
                     Your support ticket <b>#{sent.ref}</b> is open. Our team will reply to <b>{sent.contact}</b>.
+                    {session ? (
+                      <> Follow the updates under <Link to="/tickets" className="underline">My tickets</Link>.</>
+                    ) : (
+                      <> Sign in with Google to follow updates in the app.</>
+                    )}
                   </p>
                 </div>
               )}

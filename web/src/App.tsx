@@ -9,6 +9,7 @@ import MyOrders from './pages/MyOrders'
 import AdminProducts from './pages/AdminProducts'
 import AdminOrders from './pages/AdminOrders'
 import AdminSupport from './pages/AdminSupport'
+import MyTickets from './pages/MyTickets'
 import ChatWidget from './components/ChatWidget'
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/shop" element={<Products />} />
           <Route path="/orders" element={<MyOrders />} />
+          <Route path="/tickets" element={<MyTickets />} />
           <Route element={<RequireAdmin />}>
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/admin/orders" element={<AdminOrders />} />

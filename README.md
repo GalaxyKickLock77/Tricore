@@ -69,3 +69,13 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 - **Can request:** a call-back from the team (contact form, only after the customer says yes).
 - **Cannot:** take payments, change prices or give discounts, cancel or edit orders, see other customers' data, use any
   admin function, or touch products and stock. The server never holds a service key.
+
+### Support tickets (comments and updates)
+- Run `supabase/migrations/20261011000000_ticket_comments.sql` once in the Supabase SQL editor.
+- **Admin** (`/admin/support`): filter by Open / In progress / Resolved, change the status, post updates the customer can
+  see, add internal notes only admins can see, read the chat that led to the ticket, and use **Email customer**.
+  The first public reply moves an open ticket to In progress.
+- **Customer** (`/tickets`, "My tickets" in the menu): sees their own tickets and the team's updates, and can reply. A reply on a
+  resolved ticket reopens it. Visitors who were not signed in get no in-app view; admins email them instead.
+- Comments can only be added through `add_ticket_comment()`, which checks who may write on which ticket.
+- No automatic email notifications are sent yet (that needs an email service such as Resend).
