@@ -272,6 +272,7 @@ const FORBIDDEN = /(gsk_[a-z0-9]+|system prompt|api[_ ]?key)/i
 // ───────── conversation understanding: which product, is it available, is the customer haggling ─────────
 const STOP = new Set(['the', 'and', 'for', 'with', 'of', 'in', 'to', 'on', 'an', 'inch'])
 const toks = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 1 && !STOP.has(w))
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 const fmt = (n: number) => `$${Number(n).toFixed(2)}`
 const OOS_RE = /out of stock|sold out|unavailable|not available|restock|isn't available|is not available/i
 
@@ -432,10 +433,10 @@ export function routeCatalog(messages: ChatMessage[], context: ChatContext, focu
       if (oos) return { ...reply('answer', outOfStockReply(p, products, false), 'question'), sources: src(p) }
       const price = wantsPrice || wantsAvail ? ` at ${fmt(p.price_usd)}` : ''
       const text = low
-        ? `${p.name} is available${price}, but only a few are left, so don't wait too long! You can order it from the Shop with the Buy button.`
+        ? `${cap(p.name)} is available${price}, but only a few are left, so don't wait too long! You can order it from the Shop with the Buy button.`
         : pick([
-            `Yes! ${p.name} is in stock${price}. You can order it from the Shop with the Buy button once you're signed in.`,
-            `Good news, ${p.name} is in stock${price}. Just sign in and click Buy on it in the Shop.`,
+            `Yes! ${cap(p.name)} is in stock${price}. You can order it from the Shop with the Buy button once you're signed in.`,
+            `Good news, ${cap(p.name)} is in stock${price}. Just sign in and click Buy on it in the Shop.`,
           ])
       return { ...reply('answer', text, 'question'), sources: src(p) }
     }
@@ -447,7 +448,7 @@ function outOfStockReply(p: KbProduct, products: KbProduct[], askTeam = true): s
   const alt = alternatives(p, products)
   const altText = alt.length ? ` In the meantime I do have ${alt.map((a) => `${a.name} at ${fmt(a.price_usd)}`).join(' and ')} in stock.` : ''
   const tail = askTeam ? ' Would you like me to connect you with my team to ask about it?' : ' Want me to tell you more about any of them?'
-  return `${p.name} is out of stock right now, so I can't take an order for it at the moment.${altText}${tail}`
+  return `${cap(p.name)} is out of stock right now, so I can't take an order for it at the moment.${altText}${tail}`
 }
 
 function priceTalkReply(p: KbProduct, proposed: number | null): string {
@@ -455,7 +456,7 @@ function priceTalkReply(p: KbProduct, proposed: number | null): string {
   const ask = lower
     ? `I can't change prices myself, so I can't promise ${fmt(proposed as number)}, but my team may be able to look at it.`
     : "I can't change prices myself, but my team may be able to help."
-  return `${p.name} is listed at ${fmt(p.price_usd)}. ${ask} Would you like me to connect you with them?`
+  return `${cap(p.name)} is listed at ${fmt(p.price_usd)}. ${ask} Would you like me to connect you with them?`
 }
 
 export async function answerQuestion(opts: {

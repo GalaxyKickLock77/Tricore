@@ -45,3 +45,16 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
   3. Edit the knowledge base: Supabase Table Editor, `kb_articles` (or edit `supabase/kb/articles.json`,
      run `node web/scripts/gen-kb-sql.mjs`, and run the generated `supabase/seed_kb.sql`).
 - **Evaluate:** from `web/`: `node --env-file=.env.local scripts/eval-chat.mts` (22 questions against the real model).
+
+### Chat memory, stock awareness and capacity
+- **Conversation state:** for every message the server works out which product is being discussed (from the whole chat plus
+  the product names the browser sends back as `memory`), its stock, and any price the customer proposes. Out-of-stock
+  products are never negotiated: the bot says so first and suggests in-stock alternatives.
+- **Direct answers (no model call):** availability and price of a named product, cheapest / most expensive, price-talk on a
+  known product, greetings, thanks, yes/no to "connect me with the team". These are instant and exact.
+- **Groq free tier limits (measured):** 8,000 tokens/min and **200,000 tokens/day per model** (a rolling refill of ~139
+  tokens/min). A model-written reply costs about 2.5k tokens, so the free tier supports roughly 250 model replies per day
+  across the three models. Direct answers and the FAQ cache do not use tokens. For real traffic add a payment method in
+  Groq (Developer tier, about $0.0006 per reply for gpt-oss-120b); no code change is needed.
+- **Checks without the model:** `node scripts/logic-check.mts` (from `web/`) tests product matching, price detection, memory
+  and the direct answers. `scripts/eval-chat.mts` runs the question set against the real model (uses free-tier tokens).
