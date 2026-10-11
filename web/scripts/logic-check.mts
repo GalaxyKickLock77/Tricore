@@ -14,6 +14,7 @@ const products = [
   P('4', 'Hikvision 4MP CCTV Camera', 59.99, 'out of stock'),
   P('5', 'APC 1100VA UPS', 139, 'in stock'),
   P('6', 'TP-Link 24-port Gigabit Switch', 129.5, 'low stock'),
+  P('7', 'Sample Widget', 9.99, 'in stock'),
 ]
 const u = (content: string) => ({ role: 'user' as const, content })
 const a = (content: string) => ({ role: 'assistant' as const, content })
@@ -63,7 +64,7 @@ ok(r?.action === 'answer' && /only a few|129/.test(r.answer), 'pronoun follow-up
 r = route([u('how much is the camera?')])
 ok(r?.action === 'answer' && /out of stock/i.test(r.answer), 'price question on out-of-stock product mentions stock')
 r = route([u('which is your cheapest item?')])
-ok(r?.action === 'answer' && /\$29\.99|APC|139|Dell|HP|TP-Link|Test|Hikvision/.test(r.answer) && !/Test /.test(r.answer.replace('Test is','')), 'cheapest item is chosen among in-stock products: ' + r?.answer)
+ok(r?.action === 'answer' && /Sample Widget/.test(r.answer), 'cheapest item is chosen among in-stock products: ' + r?.answer)
 r = route([u('do you have laptops?'), a('We have Dell and HP.'), u('what about monitors?')])
 ok(r === null, 'category questions are left to the model')
 r = route([u('price of Test'), a('Test is $100.00 but out of stock.'), u('do you have laptops?')])
@@ -99,7 +100,7 @@ ok(o === null, 'how-to question is left to the model')
 o = ordRoute([u('order the UPS for $100')])
 ok(o?.action === 'offer_team' && !o.order, 'order + lower price -> price talk first, no order')
 o = ordRoute([u('order a laptop')])
-ok(o === null, 'ambiguous product -> no order proposal')
+ok(!o?.order, 'ambiguous product -> no order proposal (asks which one)')
 o = ordRoute([u('tell me about the UPS'), a('The APC 1100VA UPS is $139.00.'), u('ok order it')])
 ok(o?.action === 'confirm_order', '"order it" uses the product in focus')
 
@@ -113,6 +114,17 @@ o = ordRoute([u('what is the status of my order')], withOrders([{ id: 'a', quant
 ok(/shipped/i.test(o?.answer ?? '') && /278/.test(o?.answer ?? '') && /DTDC/.test(o?.answer ?? '') && /TRK99/.test(o?.answer ?? ''), 'reports status with courier and tracking: ' + o?.answer)
 o = ordRoute([u('my order has not arrived')], withOrders([{ id: 'a', quantity: 1, unit_price: 139, status: 'awaiting_payment', created_at: '2026-10-09T10:00:00Z', products: { name: 'APC 1100VA UPS' } }]))
 ok(o?.action === 'offer_team' && /waiting for your payment/i.test(o.answer), 'not-arrived complaint -> status plus offer of the team')
+
+// ── the reported case: "order 9.99 item one"
+o = ordRoute([u('order 9.99 item one')])
+ok(o?.action === 'confirm_order' && o.order?.name === 'Sample Widget' && o.order.quantity === 1, 'price-only order phrase finds the product and does not read 9.99 as quantity 9: ' + (o?.action ?? 'null') + ' qty=' + o?.order?.quantity)
+ok(parseQuantity('order 9.99 item one') === 1 && parseQuantity('order 2 items at 9.99') === 2, 'decimals are never quantities')
+o = ordRoute([u('I want to order something')])
+ok(o?.action === 'answer' && /Which product/.test(o.answer) && !o.order, 'order intent without a product -> asks which product with real examples: ' + o?.answer)
+o = ordRoute([u('please cancel my order')])
+ok(o === null, 'talk about an existing order is not treated as a new order')
+o = ordRoute([u('order 899')])
+ok(matchProduct('x', products) === null && o !== null, 'bare big price still resolves safely')
 
 // ── prompt size ──
 const kb = JSON.parse(readFileSync(new URL('../../supabase/kb/articles.json', import.meta.url), 'utf8'))
