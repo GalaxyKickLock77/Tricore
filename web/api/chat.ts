@@ -12,14 +12,19 @@ function limited(ip: string): boolean {
   return recent.length > 15
 }
 
+// Tiny in-memory cache for repeated single-turn questions (saves the free-tier token budget).
+const cache = new Map<string, { at: number; reply: Record<string, unknown> }>()
+const CACHE_MS = 15 * 60_000
+const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
 function clean(input: unknown): ChatMessage[] | null {
   if (!Array.isArray(input) || input.length === 0) return null
   const msgs = input
     .filter((m): m is { role: string; content: string } => !!m && typeof m.content === 'string' && typeof m.role === 'string')
     .filter((m) => m.role === 'user' || m.role === 'assistant')
-    .map((m) => ({ role: m.role as ChatMessage['role'], content: m.content.trim().slice(0, 600) }))
+    .map((m) => ({ role: m.role as ChatMessage['role'], content: m.content.trim().slice(0, m.role === 'assistant' ? 500 : 600) }))
     .filter((m) => m.content.length > 0)
-    .slice(-6)
+    .slice(-8)
   if (msgs.length === 0 || msgs[msgs.length - 1].role !== 'user') return null
   return msgs
 }
@@ -41,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
     return json(offer('You are sending messages very quickly. Give me a moment, or would you like me to connect you with my team?', 'throttled'))
   }
 
-  let body: { messages?: unknown; name?: unknown }
+  let body: { messages?: unknown; name?: unknown; memory?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -54,13 +59,18 @@ export async function POST(request: Request): Promise<Response> {
   const rawName = typeof body.name === 'string' ? body.name.trim().split(/\s+/)[0] : ''
   const name = /^[\p{L}'-]{2,24}$/u.test(rawName) ? rawName : undefined
 
-  const fast = routeFast(messages, name)
-  if (fast) return json(fast)
+  // Products discussed earlier (echoed back by the client) so the bot keeps context beyond the message window.
+  const memory = (Array.isArray(body.memory) ? body.memory : [])
+    .filter((n): n is string => typeof n === 'string')
+    .map((n) => n.trim().slice(0, 120))
+    .filter(Boolean)
+    .slice(-5)
 
-  // Retrieval (RAG): knowledge articles + live products from Supabase.
-  const users = messages.filter((m) => m.role === 'user')
-  const last = users[users.length - 1].content
-  const query = last.split(/\s+/).length < 4 && users.length > 1 ? `${users[users.length - 2].content} ${last}` : last
+  const fast = routeFast(messages, name)
+  if (fast) return json({ ...fast, memory })
+
+  // Retrieval (RAG): the search uses the recent conversation and remembered products, not just the last message.
+  const query = [...memory, ...messages.slice(-4).map((m) => m.content.slice(0, 300))].join(' ').slice(0, 900)
 
   let context: ChatContext
   try {
@@ -76,6 +86,17 @@ export async function POST(request: Request): Promise<Response> {
     context = { articles: FALLBACK_ARTICLES, products: [] }
   }
 
-  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name })
+  // Only plain first questions (no history, no remembered products, no name) are cached.
+  const cacheKey = messages.length === 1 && memory.length === 0 && !name ? norm(messages[0].content) : null
+  const hit = cacheKey ? cache.get(cacheKey) : undefined
+  if (hit && Date.now() - hit.at < CACHE_MS) return json(hit.reply)
+
+  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name, memory })
+  // Cache only model-written FAQ answers that rely on knowledge articles (never prices or stock, which change).
+  const faqOnly = Array.isArray(reply.sources) && reply.sources.length > 0 && reply.sources.every((x) => !/^p\d+$/.test(x.id))
+  if (cacheKey && _model && faqOnly && reply.action === 'answer' && reply.intent === 'question' && reply.verified) {
+    if (cache.size > 300) cache.clear()
+    cache.set(cacheKey, { at: Date.now(), reply: { ...reply } })
+  }
   return json(reply)
 }

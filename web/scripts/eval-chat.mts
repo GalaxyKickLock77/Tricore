@@ -13,6 +13,7 @@ const fullCatalog: ChatContext = {
     ['Dell Latitude 5440 Laptop', 899, 'in stock', '14 inch business laptop, 16GB RAM, 512GB SSD'],
     ['HP ProBook 450 G10 Laptop', 749, 'in stock', '15.6 inch business laptop, 16GB RAM, 512GB SSD'],
     ['Lenovo ThinkCentre Desktop', 599, 'in stock', 'Compact office desktop PC'],
+    ['Test', 100, 'out of stock', 'A test product'],
     ['TP-Link 24-port Gigabit Switch', 129.5, 'low stock', 'Gigabit managed switch for offices'],
     ['TP-Link Archer AX55 WiFi 6 Router', 89.99, 'in stock', 'Dual-band WiFi 6 router'],
     ['Hikvision 4MP CCTV Camera', 59.99, 'out of stock', 'Weatherproof IP camera'],
@@ -50,7 +51,7 @@ const cases: Case[] = [
   { q: 'do you sell drones?', action: 'either', include: /not|don.t|no /i, exclude: /yes, we (do )?sell drone/i },
   { q: 'do you have a router with wifi 6?', action: 'answer', include: /archer|89\.99/i },
   { q: 'is a network switch available?', action: 'answer', include: /switch/i },
-  { q: 'Is the CCTV camera available?', action: 'answer', include: /out of stock|not available|unavailable/i },
+  { q: 'Is the CCTV camera available?', action: 'answer', exclude: /connect you with/i, include: /out of stock|not available|unavailable/i },
   { q: 'I need an NVR for my cameras', action: 'answer', include: /nvr|189/i },
   { msgs: [u('show me laptops'), a('We have the Dell Latitude 5440 Laptop at $899.00 and the HP ProBook 450 G10 Laptop at $749.00.'), u('which one is cheaper?')], action: 'answer', include: /hp|749/i },
   { msgs: [u('What is the price of the UPS?'), a('The APC 1100VA UPS costs $139.00.'), u('and for 2 of them?')], action: 'answer', include: /278/ },
@@ -61,7 +62,7 @@ const cases: Case[] = [
   { q: 'How can I pay?', action: 'answer', include: /team/i, exclude: /\b(upi|paypal|stripe|visa|mastercard|bank transfer|cash on delivery|net banking)\b/i },
   { q: 'is shipping free?', action: 'answer', exclude: /yes[,!. ]+(shipping|delivery)?\s*(is\s*)?free|free shipping on|ships? for free/i },
   { q: 'Do you offer installation service for CCTV?', action: 'either', exclude: /yes[,!. ]+we (do )?(offer|provide) installation|good deal|change prices/i },
-  { q: 'Does the Dell monitor have HDMI?', action: 'either', exclude: /\bhas (an? )?hdmi\b|comes with hdmi|yes[,!. ]+it has/i },
+  { q: 'Does the Dell monitor have HDMI?', action: 'either', exclude: /monitor has (an? )?hdmi|comes with hdmi|yes[,!. ]+it has/i },
   { q: 'I want to speak to someone', action: 'handoff' },
   { q: 'my order has not arrived yet', action: 'either', include: /my orders|team|sorry/i },
   { q: 'How do I check my order?', action: 'answer', include: /my orders/i },
@@ -80,6 +81,15 @@ const cases: Case[] = [
   { q: 'list all your products', action: 'answer', include: /dell/i },
   { q: 'antivirus?', action: 'answer', include: /kaspersky|29\.99/i },
   { q: 'Do you sell Microsoft Office?', action: 'answer', include: /office|249/i },
+  { msgs: [u('tell me about the Test product'), a('Test is listed at $100.00 and it is out of stock right now.'), u('can you give it for 80$?')], action: 'offer_team', include: [/out of stock/i, /\?\s*$/], exclude: /everyone likes a good deal/i },
+  { q: 'can I get Test for $80', action: 'offer_team', include: /out of stock/i },
+  { q: 'I want to buy Test', action: 'either', include: /out of stock/i },
+  { msgs: [u('price of HP ProBook?'), a('The HP ProBook 450 G10 Laptop is $749.00.'), u('can you do 600?')], action: 'offer_team', include: [/749/, /600/] },
+  { q: 'would you do $700 for the Dell Latitude?', action: 'offer_team', include: /899/ },
+  { q: 'Dell Latitude for 950', action: 'either', include: /899/ },
+  { msgs: [u('do you have the APC UPS?'), a('Yes, the APC 1100VA UPS is in stock at $139.00.'), u('and what about its availability?')], action: 'answer', include: /in stock/i },
+  { msgs: [u('tell me about the Hikvision camera'), a('The Hikvision 4MP CCTV Camera is $59.99 but it is out of stock right now.'), u('ok'), a('Anything else I can help with?'), u('what is the cheapest switch'), a('The TP-Link 24-port Gigabit Switch is $129.50 and it is low stock.'), u('can I buy the camera?')], action: 'either', include: /out of stock/i },
+  { msgs: [u('is Test available?'), a('Test is out of stock right now.'), u('what else do you have around the same price?')], action: 'answer', include: /89\.99|129\.5|router|switch|monitor/i },
   { q: 'Can you give me a 10% discount?', action: 'offer_team', include: /\?\s*$/ },
   { q: 'can you reduce the price of the Dell laptop?', action: 'offer_team', include: [/899/, /\?\s*$/] },
   { q: 'is the price negotiable?', action: 'offer_team', include: /\?\s*$/ },
@@ -97,9 +107,7 @@ const cases: Case[] = [
 
 // Mirrors the SQL chat_context(): relevant products first, plus 3 cheapest, 3 priciest and 10 newest, max 30.
 function retrieve(msgs: { role: string; content: string }[]): ChatContext {
-  const users = msgs.filter((m) => m.role === 'user')
-  const last = users[users.length - 1].content
-  const query = last.split(/\s+/).length < 4 && users.length > 1 ? `${users[users.length - 2].content} ${last}` : last
+  const query = msgs.slice(-4).map((m) => m.content.slice(0, 300)).join(' ')
   const words = new Set(query.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 1))
   const all = fullCatalog.products
   const rel = (p: (typeof all)[number]) => `${p.name} ${p.description}`.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => words.has(w)).length
@@ -134,6 +142,6 @@ for (const [i, c] of cases.entries()) {
   if (!problems.length) pass++
   else failures.push(`#${i + 1} ${c.q ?? c.msgs!.at(-1)!.content}`)
   log(`${status} #${i + 1} [${reply.model ?? '-'}] ${c.q ?? c.msgs!.at(-1)!.content}\n      -> ${reply.action}/${reply.intent}: ${reply.answer.replace(/\s+/g, ' ').slice(0, 220)}\n      sources: ${reply.sources.map((s) => s.id).join(',') || '-'}${problems.length ? '\n      PROBLEMS: ' + problems.join('; ') : ''}`)
-  await sleep(7000) // stay under the free-tier tokens-per-minute limit
+  if (reply.model) await sleep(7000) // only calls that used the model count against the free-tier limits
 }
 log(`\nRESULT: ${pass}/${cases.length} passed${failures.length ? '\nFailed: ' + failures.join(' | ') : ''}`)

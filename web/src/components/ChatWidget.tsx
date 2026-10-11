@@ -20,6 +20,7 @@ interface BotReply {
   answer: string
   sources: { id: string; title: string }[]
   handoffReason?: string
+  memory?: string[]
 }
 
 const GREETING: Msg = {
@@ -46,6 +47,7 @@ export default function ChatWidget() {
   const [offer, setOffer] = useState<{ question: string; reason: string } | null>(null)
   const [sent, setSent] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const memoryRef = useRef<string[]>([])
   const meta = session?.user.user_metadata as { full_name?: string; name?: string } | undefined
   const firstName = (meta?.full_name ?? meta?.name ?? '').trim().split(/\s+/)[0] || undefined
 
@@ -69,12 +71,14 @@ export default function ChatWidget() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           // skip the local greeting; send only recent turns
-          messages: next.slice(1).slice(-6).map(({ role, content }) => ({ role, content })),
+          messages: next.slice(1).slice(-8).map(({ role, content }) => ({ role, content })),
           name: firstName,
+          memory: memoryRef.current,
         }),
       })
       if (!res.ok) throw new Error(String(res.status))
       const reply = (await res.json()) as BotReply
+      if (Array.isArray(reply.memory)) memoryRef.current = reply.memory
       setMessages((m) => [...m, { role: 'assistant', content: reply.answer, sources: reply.sources }])
       if (reply.action === 'handoff') setHandoff({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
       if (reply.action === 'offer_team') setOffer({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
