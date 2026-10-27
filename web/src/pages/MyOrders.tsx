@@ -115,6 +115,20 @@ export default function MyOrders() {
                       {paying === o.id && <Loader2 className="size-4 animate-spin" />}
                       <CreditCard className="size-4" /> Pay {money(o.total)} now
                     </Button>
+                    <Button size="lg" variant="outline" disabled={paying === o.id} onClick={async () => {
+                      if (!session?.access_token) { toast.error('Please sign in.'); return }
+                      setPaying(o.id)
+                      try {
+                        const r = await fetch('/api/xpay-status', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ order_id: o.id }) })
+                        const data = await r.json().catch(() => ({}))
+                        if (data?.status === 'paid') { toast.success('Payment confirmed!'); load() }
+                        else toast.info(`Still pending (${data?.xpay ?? 'pending'}). Wait a minute and try again.`)
+                      } catch { toast.error('Could not check status') }
+                      finally { setPaying(null) }
+                    }}>
+                      {paying === o.id && <Loader2 className="size-4 animate-spin" />}
+                      Refresh payment status
+                    </Button>
                     <Button size="lg" variant="outline" onClick={() => cancel(o.id)}>Cancel order</Button>
                   </div>
                 )}
