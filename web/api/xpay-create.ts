@@ -32,10 +32,14 @@ export async function POST(request: Request) {
     const mobile = String(order.ship_phone ?? '').replace(/\D/g, '').slice(-10)
     const amount = Number(order.total).toFixed(2)
 
+    // XPay echoes this value as the UPI transaction reference. UPI requires it to be
+    // <= 35 chars, so use the UUID without hyphens (32 hex chars) instead of the raw UUID.
+    const xpayOrderId = orderId.replace(/-/g, '')
+
     const payload: Record<string, unknown> = {
       api_key: c.apiKey,
       amount,
-      order_id: orderId,
+      order_id: xpayOrderId,
       customer_mobile: mobile || undefined,
       remark: `${productName} | ${orderId.slice(0, 8)}`,
       success_url: `${c.store}/orders?payment=success&order=${orderId}`,

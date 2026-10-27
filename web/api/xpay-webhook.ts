@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     try { event = JSON.parse(raw) } catch { return json({ error: 'Invalid JSON' }, 400) }
 
     const orderId = event?.order_id
-    if (typeof orderId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
+    if (typeof orderId !== 'string' || !/^[0-9a-f]{32}$/i.test(orderId)) {
       return json({ received: true })
     }
 
@@ -27,8 +27,10 @@ export async function POST(request: Request) {
     const amount = Number(statusData.data.amount)
     const utr = typeof statusData.data.utr === 'string' ? statusData.data.utr : (typeof event?.utr === 'string' ? event.utr : '')
 
-    const { data: order, error } = await db.from('orders').select('id, status, total, payment_reference').eq('id', orderId).maybeSingle()
-    if (error) return json({ error: 'Retry webhook later' }, 503)
+    // Map the compact XPay order id back to our store order id (UUID with hyphens).
+    const { data: allOrders, error: listError } = await db.from('orders').select('id, status, total, payment_reference')
+    if (listError) return json({ error: 'Retry webhook later' }, 503)
+    const order = (allOrders ?? []).find((o: any) => String(o.id).replace(/-/g, '').toLowerCase() === orderId.toLowerCase())
     if (!order) return json({ received: true }) // unknown order, ignore
 
     // Amount must match.
@@ -47,11 +49,11 @@ export async function POST(request: Request) {
     const { error: updateError } = await db
       .from('orders')
       .update({ status: 'paid', paid_at: new Date().toISOString(), payment_reference: utr || order.payment_reference, payment_note: null })
-      .eq('id', orderId)
+      .eq('id', order.id)
     if (updateError) return json({ error: 'Retry webhook later' }, 503)
 
     await db.from('order_events').insert({
-      order_id: orderId,
+      order_id: order.id,
       status: 'paid',
       note: `Payment received via XPay.${utr ? ` UTR ${utr}.` : ''}`,
       actor_role: 'system',
