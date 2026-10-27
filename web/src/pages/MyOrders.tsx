@@ -1,21 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ExternalLink, MapPin, ReceiptText, Truck } from 'lucide-react'
+import { CreditCard, ExternalLink, Loader2, MapPin, ReceiptText, Truck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useStoreSettings } from '@/lib/useSettings'
+import { useAuth } from '@/lib/auth'
 import { money, orderRef, shortDate } from '@/lib/format'
 import type { Order, OrderEvent } from '@/lib/types'
 import { EmptyState, Page } from '@/components/Page'
 import OrderTimeline from '@/components/OrderTimeline'
-import PaymentPanel from '@/components/PaymentPanel'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function MyOrders() {
-  const { settings } = useStoreSettings()
+  const { session } = useAuth()
   const [orders, setOrders] = useState<Order[]>([])
   const [events, setEvents] = useState<OrderEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -41,6 +40,25 @@ export default function MyOrders() {
     return map
   }, [events])
 
+  const payNow = async (id: string) => {
+    if (!session?.access_token) { toast.error('Please sign in to pay.'); return }
+    setPaying(id)
+    try {
+      const r = await fetch('/api/xpay-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ order_id: id }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok || !data?.payment_url) throw new Error(data?.error || 'Could not start payment')
+      window.location.href = data.payment_url
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not start payment')
+    } finally {
+      setPaying(null)
+    }
+  }
+
   const cancel = async (id: string) => {
     if (!confirm('Cancel this order?')) return
     const { error } = await supabase.rpc('cancel_my_order', { p_order: id })
@@ -48,9 +66,9 @@ export default function MyOrders() {
     else toast.success('Order cancelled')
     load()
   }
-
   return (
     <Page title="My orders" description="Follow each order from payment to delivery.">
+
       {loading ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : orders.length === 0 ? (
@@ -92,15 +110,12 @@ export default function MyOrders() {
                 )}
 
                 {o.status === 'awaiting_payment' && (
-                  <div className="space-y-3">
-                    {paying === o.id ? (
-                      <PaymentPanel orderId={o.id} total={Number(o.total)} settings={settings} onSubmitted={() => { setPaying(null); load() }} />
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="lg" onClick={() => setPaying(o.id)}>Pay {money(o.total)} now</Button>
-                        <Button size="lg" variant="outline" onClick={() => cancel(o.id)}>Cancel order</Button>
-                      </div>
-                    )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="lg" disabled={paying === o.id} onClick={() => payNow(o.id)}>
+                      {paying === o.id && <Loader2 className="size-4 animate-spin" />}
+                      <CreditCard className="size-4" /> Pay {money(o.total)} now
+                    </Button>
+                    <Button size="lg" variant="outline" onClick={() => cancel(o.id)}>Cancel order</Button>
                   </div>
                 )}
                 {o.status === 'payment_submitted' && (

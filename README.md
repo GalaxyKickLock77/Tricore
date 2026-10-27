@@ -1,5 +1,7 @@
 # Tricore Store
 
+Online payments are handled by XPay (https://xpaygateway.store). Configure `XPAY_API_KEY` on the server; see `web/xpay.env.example`.
+
 React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supabase Cloud (Auth, Postgres, RLS).
 
 ## Setup

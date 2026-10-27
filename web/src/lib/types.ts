@@ -70,7 +70,7 @@ export interface Address {
   pincode: string
 }
 
-export type StoreSettings = Record<'upi_id' | 'upi_name' | 'payment_note' | 'support_email' | 'unpaid_expiry_hours', string>
+export type StoreSettings = Record<'support_email' | 'unpaid_expiry_hours', string>
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved'
 

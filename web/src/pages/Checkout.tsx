@@ -1,13 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CheckCircle2, Loader2, MapPin, Package, ShoppingBag } from 'lucide-react'
+import { Loader2, MapPin, Package, ShoppingBag, CreditCard } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useStoreSettings } from '@/lib/useSettings'
+import { useAuth } from '@/lib/auth'
 import { money, orderRef } from '@/lib/format'
 import type { Address, Order, Product } from '@/lib/types'
 import { Page } from '@/components/Page'
-import PaymentPanel from '@/components/PaymentPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,8 +17,7 @@ const empty: Address = { name: '', phone: '', line1: '', line2: '', city: '', st
 
 export default function Checkout() {
   const [params] = useSearchParams()
-  const navigate = useNavigate()
-  const { settings } = useStoreSettings()
+  const { session } = useAuth()
   const productId = params.get('product') ?? ''
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
@@ -27,7 +25,26 @@ export default function Checkout() {
   const [addr, setAddr] = useState<Address>(empty)
   const [placing, setPlacing] = useState(false)
   const [order, setOrder] = useState<Order | null>(null)
-  const [submitted, setSubmitted] = useState(false)
+  const [paying, setPaying] = useState(false)
+
+  const payNow = async (o: Order) => {
+    if (!session?.access_token) { toast.error('Please sign in to pay.'); return }
+    setPaying(true)
+    try {
+      const r = await fetch('/api/xpay-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ order_id: o.id }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok || !data?.payment_url) throw new Error(data?.error || 'Could not start payment')
+      window.location.href = data.payment_url
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not start payment')
+    } finally {
+      setPaying(false)
+    }
+  }
 
   useEffect(() => {
     let alive = true
@@ -81,7 +98,7 @@ export default function Checkout() {
   }
   const soldOut = product.stock < 1
   const total = Number(product.price) * qty
-  const step = !order ? 1 : submitted ? 3 : 2
+  const step = !order ? 1 : 2
 
   return (
     <Page title="Checkout" description="Delivery address, then payment with GPay. We ship once your payment is confirmed.">
@@ -122,20 +139,12 @@ export default function Checkout() {
             <Card>
               <CardHeader><CardTitle className="text-base">Pay {money(order.total)} with GPay (order #{orderRef(order.id)})</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">Your order is placed and the item is reserved for you. We ship it after the money reaches our bank and our team confirms it.</p>
-                <PaymentPanel orderId={order.id} total={Number(order.total)} settings={settings} onSubmitted={() => setSubmitted(true)} />
+                <p className="text-sm text-muted-foreground">Your order is placed and the item is reserved for you. Click below to pay securely. We ship it after the payment is confirmed.</p>
+                <Button size="lg" className="w-full" disabled={paying} onClick={() => payNow(order)}>
+                  {paying && <Loader2 className="size-4 animate-spin" />}
+                  <CreditCard className="size-4" /> Pay now
+                </Button>
                 <p className="text-xs text-muted-foreground">You can also pay later from <Link className="underline" to="/orders">My orders</Link>.</p>
-              </CardContent>
-            </Card>
-          )}
-
-          {step === 3 && order && (
-            <Card>
-              <CardContent className="space-y-3 py-6 text-center">
-                <CheckCircle2 className="mx-auto size-10 text-emerald-600" />
-                <h2 className="text-lg font-semibold">Payment submitted</h2>
-                <p className="text-sm text-muted-foreground">Order #{orderRef(order.id)}. Our team will verify the payment in the bank and confirm it. You can follow every step, including shipping and tracking, under My orders.</p>
-                <Button size="lg" onClick={() => navigate('/orders')}>Track my order</Button>
               </CardContent>
             </Card>
           )}

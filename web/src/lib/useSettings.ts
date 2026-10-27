@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { StoreSettings } from './types'
 
-const empty: StoreSettings = { upi_id: '', upi_name: 'Tricore IT Solutions', payment_note: '', support_email: '', unpaid_expiry_hours: '24' }
+const empty: StoreSettings = { support_email: '', unpaid_expiry_hours: '24' }
 
 /** Payment settings (UPI id etc.) that the admin maintains. Readable by signed-in users only. */
 export function useStoreSettings() {
