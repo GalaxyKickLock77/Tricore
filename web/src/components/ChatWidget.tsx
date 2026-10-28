@@ -286,7 +286,7 @@ function OrderConfirm({ proposal, signedIn, onContinue, onCancel }: {
   const money = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n)
   const target = `/checkout?product=${proposal.product_id}&qty=${proposal.quantity}`
 
-  // The assistant never places an order. The customer finishes it on the checkout page (address, then GPay payment).
+  // The assistant never places an order. The customer finishes it on the checkout page (address, then our team confirms payment and delivery).
   const go = () => {
     if (!signedIn) sessionStorage.setItem('tricore_next', target)
     onContinue()
@@ -300,7 +300,7 @@ function OrderConfirm({ proposal, signedIn, onContinue, onCancel }: {
         <span>{proposal.quantity} × {proposal.name}</span>
         <span className="font-medium">{money(total)}</span>
       </div>
-      <p className="text-xs text-muted-foreground">{money(proposal.unit_price)} each. Next you add your delivery address and pay with GPay.</p>
+      <p className="text-xs text-muted-foreground">{money(proposal.unit_price)} each. Next you add your delivery address; our team will contact you to confirm payment and delivery.</p>
       <div className="flex gap-2">
         <Button size="lg" className="flex-1" onClick={go}>{signedIn ? 'Continue to checkout' : 'Sign in to continue'}</Button>
         <Button size="lg" variant="outline" onClick={onCancel}>Cancel</Button>
