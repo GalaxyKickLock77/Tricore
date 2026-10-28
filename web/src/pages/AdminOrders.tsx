@@ -117,7 +117,7 @@ export default function AdminOrders() {
     e.preventDefault()
     if (!dlg) return
     if (dlg.kind === 'ship') void run('admin_ship_order', { p_order: dlg.order.id, p_courier: courier, p_tracking: tracking, p_url: url || null }, 'Order marked as shipped', { message: `Your order has been shipped via ${courier}. Tracking number: ${tracking}${url ? ' (' + url + ')' : ''}.`, status: 'in_progress' })
-    if (dlg.kind === 'cancel') void run('admin_cancel_order', { p_order: dlg.order.id, p_reason: reason }, 'Order cancelled and stock restored', { message: `Order cancelled: ${reason}` })
+    if (dlg.kind === 'cancel') void run('admin_cancel_order', { p_order: dlg.order.id, p_reason: reason }, 'Order cancelled and stock restored', { message: `Order cancelled: ${reason}`, status: 'resolved' })
   }
 
   return (
