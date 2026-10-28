@@ -124,7 +124,13 @@ export default function MyOrders() {
                 {ticketByOrder.get(o.id) && (
                   <div className="space-y-2 rounded-lg border p-3">
                     <p className="text-sm font-medium">Support ticket #{ticketByOrder.get(o.id)!.id.slice(0, 8).toUpperCase()} — messages from you and the Tricore team</p>
-                    <TicketThread ticketId={ticketByOrder.get(o.id)!.id} comments={commentsByTicket.get(ticketByOrder.get(o.id)!.id) ?? []} isAdmin={false} onPosted={load} />
+                    <TicketThread ticketId={ticketByOrder.get(o.id)!.id} comments={commentsByTicket.get(ticketByOrder.get(o.id)!.id) ?? []} isAdmin={false} onPosted={load} allowReply={ticketByOrder.get(o.id)!.status !== 'resolved'} />
+                    {ticketByOrder.get(o.id)!.status === 'resolved' && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-500/10 p-2 text-sm">
+                        <span>This ticket is resolved. If you need further help, open a new ticket.</span>
+                        <Button size="lg" asChild><Link to="/tickets">Open new ticket</Link></Button>
+                      </div>
+                    )}
                   </div>
                 )}
 
