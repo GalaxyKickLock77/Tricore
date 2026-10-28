@@ -27,6 +27,7 @@ export default function Checkout() {
   const [order, setOrder] = useState<Order | null>(null)
   const [ticketId, setTicketId] = useState<string | null>(null)
   const [ticketError, setTicketError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Partial<Record<keyof Address, string>>>({})
 
   useEffect(() => {
     let alive = true
@@ -52,11 +53,52 @@ export default function Checkout() {
     }
   }, [productId])
 
-  const set = (k: keyof Address) => (e: React.ChangeEvent<HTMLInputElement>) => setAddr((a) => ({ ...a, [k]: e.target.value }))
+  const set = (k: keyof Address) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAddr((a) => ({ ...a, [k]: e.target.value }))
+    setErrors((prev) => ({ ...prev, [k]: undefined }))
+  }
+
+  const validate = () => {
+    const e: Partial<Record<keyof Address, string>> = {}
+    const name = addr.name.trim()
+    if (!name) e.name = 'Name is required'
+    else if (name.length < 2 || name.length > 80) e.name = 'Name must be 2-80 characters'
+    else if (!/^[A-Za-z][A-Za-z\s.'-]*$/.test(name)) e.name = 'Name can contain letters, spaces, dot, apostrophe or hyphen only'
+
+    const phone = addr.phone.trim()
+    if (!phone) e.phone = 'Phone is required'
+    else if (!/^[6-9]\d{9}$/.test(phone)) e.phone = 'Enter a valid 10-digit Indian mobile number'
+
+    const line1 = addr.line1.trim()
+    if (!line1) e.line1 = 'Address line 1 is required'
+    else if (line1.length < 3 || line1.length > 200) e.line1 = 'Address must be 3-200 characters'
+    else if (!/^[A-Za-z0-9][A-Za-z0-9\s,.\-/#]*$/.test(line1)) e.line1 = 'Address contains invalid characters'
+
+    const line2 = addr.line2.trim()
+    if (line2 && (line2.length > 200 || !/^[A-Za-z0-9][A-Za-z0-9\s,.\-/#]*$/.test(line2))) e.line2 = 'Invalid landmark/area'
+
+    const city = addr.city.trim()
+    if (!city) e.city = 'City is required'
+    else if (city.length < 2 || city.length > 80) e.city = 'City must be 2-80 characters'
+    else if (!/^[A-Za-z][A-Za-z\s.'-]*$/.test(city)) e.city = 'City can contain letters, spaces, dot, apostrophe or hyphen only'
+
+    const state = addr.state.trim()
+    if (!state) e.state = 'State is required'
+    else if (state.length < 2 || state.length > 80) e.state = 'State must be 2-80 characters'
+    else if (!/^[A-Za-z][A-Za-z\s.'-]*$/.test(state)) e.state = 'State can contain letters, spaces, dot, apostrophe or hyphen only'
+
+    const pincode = addr.pincode.trim()
+    if (!pincode) e.pincode = 'PIN code is required'
+    else if (!/^\d{6}$/.test(pincode)) e.pincode = 'Enter a valid 6-digit PIN code'
+
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
 
   const place = async (e: FormEvent) => {
     e.preventDefault()
     if (!product) return
+    if (!validate()) return
     setPlacing(true)
     const { data, error } = await supabase.rpc('place_order', { p_product_id: product.id, p_quantity: qty, p_address: addr })
     if (error) {
@@ -131,13 +173,13 @@ export default function Checkout() {
               <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MapPin className="size-4" /> Where should we deliver?</CardTitle></CardHeader>
               <CardContent>
                 <form onSubmit={place} className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="a-name">Full name</Label><Input id="a-name" required minLength={2} maxLength={80} autoComplete="name" value={addr.name} onChange={set('name')} /></div>
-                  <div className="space-y-1.5"><Label htmlFor="a-phone">Phone number</Label><Input id="a-phone" required type="tel" inputMode="tel" autoComplete="tel" placeholder="10-digit mobile" value={addr.phone} onChange={set('phone')} /></div>
-                  <div className="space-y-1.5"><Label htmlFor="a-pin">PIN code</Label><Input id="a-pin" required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="postal-code" placeholder="6 digits" value={addr.pincode} onChange={set('pincode')} /></div>
-                  <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="a-l1">Address (house no, street)</Label><Input id="a-l1" required minLength={5} maxLength={200} autoComplete="address-line1" value={addr.line1} onChange={set('line1')} /></div>
-                  <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="a-l2">Landmark / area (optional)</Label><Input id="a-l2" maxLength={200} autoComplete="address-line2" value={addr.line2} onChange={set('line2')} /></div>
-                  <div className="space-y-1.5"><Label htmlFor="a-city">City</Label><Input id="a-city" required maxLength={80} autoComplete="address-level2" value={addr.city} onChange={set('city')} /></div>
-                  <div className="space-y-1.5"><Label htmlFor="a-state">State</Label><Input id="a-state" required maxLength={80} autoComplete="address-level1" value={addr.state} onChange={set('state')} /></div>
+                  <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="a-name">Full name</Label><Input id="a-name" required minLength={2} maxLength={80} autoComplete="name" value={addr.name} onChange={set('name')} aria-invalid={!!errors.name} />{errors.name && <p className="text-xs text-destructive">{errors.name}</p>}</div>
+                  <div className="space-y-1.5"><Label htmlFor="a-phone">Phone number</Label><Input id="a-phone" required type="tel" inputMode="tel" autoComplete="tel" placeholder="10-digit mobile" value={addr.phone} onChange={set('phone')} aria-invalid={!!errors.phone} />{errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}</div>
+                  <div className="space-y-1.5"><Label htmlFor="a-pin">PIN code</Label><Input id="a-pin" required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="postal-code" placeholder="6 digits" value={addr.pincode} onChange={set('pincode')} aria-invalid={!!errors.pincode} />{errors.pincode && <p className="text-xs text-destructive">{errors.pincode}</p>}</div>
+                  <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="a-l1">Address (house no, street)</Label><Input id="a-l1" required minLength={3} maxLength={200} autoComplete="address-line1" value={addr.line1} onChange={set('line1')} aria-invalid={!!errors.line1} />{errors.line1 && <p className="text-xs text-destructive">{errors.line1}</p>}</div>
+                  <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="a-l2">Landmark / area (optional)</Label><Input id="a-l2" maxLength={200} autoComplete="address-line2" value={addr.line2} onChange={set('line2')} aria-invalid={!!errors.line2} />{errors.line2 && <p className="text-xs text-destructive">{errors.line2}</p>}</div>
+                  <div className="space-y-1.5"><Label htmlFor="a-city">City</Label><Input id="a-city" required minLength={2} maxLength={80} autoComplete="address-level2" value={addr.city} onChange={set('city')} aria-invalid={!!errors.city} />{errors.city && <p className="text-xs text-destructive">{errors.city}</p>}</div>
+                  <div className="space-y-1.5"><Label htmlFor="a-state">State</Label><Input id="a-state" required minLength={2} maxLength={80} autoComplete="address-level1" value={addr.state} onChange={set('state')} aria-invalid={!!errors.state} />{errors.state && <p className="text-xs text-destructive">{errors.state}</p>}</div>
                   <div className="sm:col-span-2">
                     <Button type="submit" size="lg" className="w-full" disabled={placing || soldOut}>
                       {placing ? <Loader2 className="size-4 animate-spin" /> : <ShoppingBag className="size-4" />}
