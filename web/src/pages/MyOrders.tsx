@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ExternalLink, MapPin, ReceiptText, Truck } from 'lucide-react'
+import { ExternalLink, MapPin, Package, ReceiptText, Truck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { money, orderRef, shortDate } from '@/lib/format'
 import type { Order, OrderEvent, Ticket, TicketComment } from '@/lib/types'
@@ -93,7 +93,11 @@ export default function MyOrders() {
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex items-center gap-3">
-                    {o.products?.image_url && <img src={o.products.image_url} alt="" className="size-12 rounded object-cover" />}
+                    {o.products?.image_url ? (
+                    <img src={o.products.image_url} alt="" className="size-12 rounded object-cover" />
+                  ) : (
+                    <div className="grid size-12 place-items-center rounded bg-muted"><Package className="size-5 text-muted-foreground" /></div>
+                  )}
                     <div>
                       <p className="font-medium">{o.products?.name ?? 'Product'} × {o.quantity}</p>
                       <p className="text-xs text-muted-foreground">Order #{orderRef(o.id)} · {shortDate(o.created_at)} · {money(o.total)}</p>
