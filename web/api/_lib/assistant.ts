@@ -91,7 +91,7 @@ async function requestOnce(
         // Keep the tools list even when tools are disabled: without it gpt-oss emits a fake "json" tool call and Groq returns 400.
         tools: ASSISTANT_TOOLS,
         tool_choice: forceTool
-          ? 'required'
+          ? { type: 'function', function: { name: forceTool } }
           : allowTools ? 'auto' : 'none',
         parallel_tool_calls: true,
         temperature: 0.2,
