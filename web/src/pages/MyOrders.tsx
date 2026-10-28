@@ -4,9 +4,10 @@ import { toast } from 'sonner'
 import { ExternalLink, MapPin, ReceiptText, Truck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { money, orderRef, shortDate } from '@/lib/format'
-import type { Order, OrderEvent } from '@/lib/types'
+import type { Order, OrderEvent, Ticket, TicketComment } from '@/lib/types'
 import { EmptyState, Page } from '@/components/Page'
 import OrderTimeline from '@/components/OrderTimeline'
+import TicketThread from '@/components/TicketThread'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,14 +17,22 @@ export default function MyOrders() {
   const [orders, setOrders] = useState<Order[]>([])
   const [events, setEvents] = useState<OrderEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [comments, setComments] = useState<TicketComment[]>([])
 
   const load = async () => {
-    const [o, e] = await Promise.all([
+    const [o, e, t, c] = await Promise.all([
       supabase.from('orders').select('*, products(name, image_url)').order('created_at', { ascending: false }),
       supabase.from('order_events').select('*').order('created_at', { ascending: true }),
+      supabase.from('support_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('ticket_comments').select('*').order('created_at', { ascending: true }),
+
     ])
     if (o.error) toast.error(o.error.message)
     setOrders((o.data as unknown as Order[]) ?? [])
+    setTickets((t.data as unknown as Ticket[]) ?? [])
+    setComments((c.data as unknown as TicketComment[]) ?? [])
+
     setEvents((e.data as OrderEvent[]) ?? [])
     setLoading(false)
   }
@@ -36,6 +45,22 @@ export default function MyOrders() {
     for (const ev of events) map.set(ev.order_id, [...(map.get(ev.order_id) ?? []), ev])
     return map
   }, [events])
+
+  const ticketByOrder = useMemo(() => {
+    const map = new Map<string, Ticket>()
+    for (const o of orders) {
+      const ref = orderRef(o.id)
+      const t = tickets.find((x) => x.question.includes(`Order ref: #${ref}`))
+      if (t) map.set(o.id, t)
+    }
+    return map
+  }, [orders, tickets])
+
+  const commentsByTicket = useMemo(() => {
+    const map = new Map<string, TicketComment[]>()
+    for (const c of comments) map.set(c.ticket_id, [...(map.get(c.ticket_id) ?? []), c])
+    return map
+  }, [comments])
 
   const cancel = async (id: string) => {
     if (!confirm('Cancel this order?')) return
@@ -79,6 +104,13 @@ export default function MyOrders() {
                     )}
                   </div>
                 )}
+                {ticketByOrder.get(o.id) && (
+                  <div className="space-y-2 rounded-lg border p-3">
+                    <p className="text-sm font-medium">Support ticket #{ticketByOrder.get(o.id)!.id.slice(0, 8).toUpperCase()} — messages from you and the Tricore team</p>
+                    <TicketThread ticketId={ticketByOrder.get(o.id)!.id} comments={commentsByTicket.get(ticketByOrder.get(o.id)!.id) ?? []} isAdmin={false} onPosted={load} />
+                  </div>
+                )}
+
 
                 {o.ship_line1 && (
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">
