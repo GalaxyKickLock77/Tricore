@@ -57,29 +57,29 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
   if (p.type === 'order') {
     switch (p.event) {
       case 'order_placed':
-        if (customer) out.push(render({ to: customer, subject: `Order ${ref} placed`, lines: [`Thank you for your order ${ref}.`, item, 'We have opened a support ticket for you. Our team will contact you shortly to confirm payment and delivery.'], link: { label: 'View my tickets', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (customer && customer !== admin) out.push(render({ to: customer, subject: `Order ${ref} placed`, lines: [`Thank you for your order ${ref}.`, item, 'We have opened a support ticket for you. Our team will contact you shortly to confirm payment and delivery.'], link: { label: 'View my tickets', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
         if (admin) out.push(render({ to: admin, subject: `New order ${ref}`, lines: [`New order ${ref} from ${p.customer_email ?? 'a customer'}.`, item, 'A support ticket has been opened. Please contact the customer to confirm payment and delivery.'], link: { label: 'Open orders', url: `${appUrl}/admin/orders` }, tag: 'Admin' }))
         break
       case 'payment_submitted':
-        if (customer) out.push(render({ to: customer, subject: `We received your payment details for ${ref}`, lines: [`Thanks! We received your payment reference${p.payment_reference ? ` ${p.payment_reference}` : ''} for order ${ref}.`, 'Our team is verifying it in the bank and will confirm shortly.'], link: { label: 'Track your order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (customer && customer !== admin) out.push(render({ to: customer, subject: `We received your payment details for ${ref}`, lines: [`Thanks! We received your payment reference${p.payment_reference ? ` ${p.payment_reference}` : ''} for order ${ref}.`, 'Our team is verifying it in the bank and will confirm shortly.'], link: { label: 'Track your order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
         if (admin) out.push(render({ to: admin, subject: `Verify payment for ${ref}`, lines: [`${p.customer_email ?? 'A customer'} says they paid ${inr(p.total)} for order ${ref}.`, `UPI transaction ID: ${p.payment_reference ?? '(not given)'}`, 'Check your bank statement for this amount and ID, then confirm or reject the payment.'], link: { label: 'Verify payment', url: `${appUrl}/admin/orders` }, tag: 'Admin' }))
         break
       case 'payment_rejected':
-        if (customer) out.push(render({ to: customer, subject: `We could not verify the payment for ${ref}`, lines: [`We could not verify the payment for order ${ref}.`, p.note ?? '', 'Please check your payment and submit the correct UPI transaction ID.'], link: { label: 'Open my order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (customer && customer !== admin) out.push(render({ to: customer, subject: `We could not verify the payment for ${ref}`, lines: [`We could not verify the payment for order ${ref}.`, p.note ?? '', 'Please check your payment and submit the correct UPI transaction ID.'], link: { label: 'Open my order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
         break
       case 'payment_confirmed':
-        if (customer) out.push(render({ to: customer, subject: `Payment confirmed for ${ref}`, lines: [`Good news! We received your payment for order ${ref}.`, item, 'We are preparing your order for shipping.'], link: { label: 'Track your order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (customer && customer !== admin) out.push(render({ to: customer, subject: `Payment confirmed for ${ref}`, lines: [`Good news! We received your payment for order ${ref}.`, item, 'We are preparing your order for shipping.'], link: { label: 'Track your order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
         break
       case 'shipped': {
         const url = safeUrl(p.tracking_url)
-        if (customer) out.push(render({ to: customer, subject: `Your order ${ref} has shipped`, lines: [`Your order ${ref} is on its way.`, item, `Courier: ${p.courier ?? '-'}`, `Tracking number: ${p.tracking_number ?? '-'}`], link: url ? { label: 'Track shipment', url } : { label: 'View my order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (customer && customer !== admin) out.push(render({ to: customer, subject: `Your order ${ref} has shipped`, lines: [`Your order ${ref} is on its way.`, item, `Courier: ${p.courier ?? '-'}`, `Tracking number: ${p.tracking_number ?? '-'}`], link: url ? { label: 'Track shipment', url } : { label: 'View my order', url: orders }, replyTo: admin ?? undefined, tag: 'Customer' }))
         break
       }
       case 'delivered':
-        if (customer) out.push(render({ to: customer, subject: `Order ${ref} delivered`, lines: [`Your order ${ref} was delivered. Thank you for shopping with Tricore!`, 'If anything is not right, open a support ticket and we will help.'], link: { label: 'Get support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (customer && customer !== admin) out.push(render({ to: customer, subject: `Order ${ref} delivered`, lines: [`Your order ${ref} was delivered. Thank you for shopping with Tricore!`, 'If anything is not right, open a support ticket and we will help.'], link: { label: 'Get support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
         break
       case 'cancelled':
-        if (customer) out.push(render({ to: customer, subject: `Order ${ref} cancelled`, lines: [`Your order ${ref} was cancelled.`, p.note ?? '', 'If you did not expect this, open a support ticket.'], link: { label: 'Get support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (customer && customer !== admin) out.push(render({ to: customer, subject: `Order ${ref} cancelled`, lines: [`Your order ${ref} was cancelled.`, p.note ?? '', 'If you did not expect this, open a support ticket.'], link: { label: 'Get support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
         break
     }
   }
@@ -88,11 +88,11 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
     const contactEmail = isEmail(p.contact) ? p.contact : null
     switch (p.event) {
       case 'opened':
-        if (contactEmail) out.push(render({ to: contactEmail, subject: `We received your support ticket ${ref}`, lines: ['Thanks for contacting us. Our team will reply soon.', `Your message: ${p.question ?? ''}`], link: { label: 'View Support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (contactEmail && contactEmail !== admin) out.push(render({ to: contactEmail, subject: `We received your support ticket ${ref}`, lines: ['Thanks for contacting us. Our team will reply soon.', `Your message: ${p.question ?? ''}`], link: { label: 'View Support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
         if (admin) out.push(render({ to: admin, subject: `New support ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.question ?? ''], link: { label: 'Open tickets', url: `${appUrl}/admin/support` }, tag: 'Admin' }))
         break
       case 'reply':
-        if (contactEmail) out.push(render({ to: contactEmail, subject: `New reply on your ticket ${ref}${p.status ? ` (${p.status})` : ''}`, lines: ['Our team replied to your ticket:', '', p.body ?? '', '', ...(p.status ? [`Ticket status: ${p.status}`] : [])], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (contactEmail && contactEmail !== admin) out.push(render({ to: contactEmail, subject: `New reply on your ticket ${ref}${p.status ? ` (${p.status})` : ''}`, lines: ['Our team replied to your ticket:', '', p.body ?? '', '', ...(p.status ? [`Ticket status: ${p.status}`] : [])], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
         break
       case 'status': {
         const note =
@@ -101,7 +101,7 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
             : p.status === 'In progress'
               ? 'Our team is working on your ticket.'
               : 'Your ticket is open and waiting for our team.'
-        if (contactEmail) out.push(render({ to: contactEmail, subject: `Your ticket ${ref} is now ${p.status ?? 'updated'}`, lines: [`The status of your ticket ${ref} changed to: ${p.status ?? 'updated'}.`, note], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (contactEmail && contactEmail !== admin) out.push(render({ to: contactEmail, subject: `Your ticket ${ref} is now ${p.status ?? 'updated'}`, lines: [`The status of your ticket ${ref} changed to: ${p.status ?? 'updated'}.`, note], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
         break
       }
       case 'customer_reply':
