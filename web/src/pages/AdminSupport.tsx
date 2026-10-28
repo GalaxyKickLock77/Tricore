@@ -18,6 +18,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
+const customerName = (t: Ticket) => {
+  if (t.profiles?.full_name) return t.profiles.full_name
+  const m = t.question.match(/Delivery address:\n([^,\n]+)/)
+  if (m?.[1]?.trim()) return m[1].trim()
+  return 'Customer'
+}
+
 const FILTERS: { key: 'all' | TicketStatus; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'open', label: 'Open' },
@@ -179,7 +186,8 @@ export default function AdminSupport() {
                       <span className="font-mono text-xs text-muted-foreground">#{ref}</span>
                       <span className="font-medium">{t.contact}</span>
                       <span className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</span>
-                      <span className="text-xs font-medium text-primary">{t.profiles?.full_name ?? 'Unknown customer'} · {t.contact}</span>
+                      <span className="text-xs font-medium text-primary">{customerName(t)}</span>
+                      <span className="text-xs text-muted-foreground">· {t.contact}</span>
                       {!t.user_id && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">visitor (not signed in)</span>}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
