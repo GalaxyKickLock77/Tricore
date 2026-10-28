@@ -92,9 +92,12 @@ export default function MyOrders() {
             <Card key={o.id}>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{o.products?.name ?? 'Product'} × {o.quantity}</p>
-                    <p className="text-xs text-muted-foreground">Order #{orderRef(o.id)} · {shortDate(o.created_at)} · {money(o.total)}</p>
+                  <div className="flex items-center gap-3">
+                    {o.products?.image_url && <img src={o.products.image_url} alt="" className="size-12 rounded object-cover" />}
+                    <div>
+                      <p className="font-medium">{o.products?.name ?? 'Product'} × {o.quantity}</p>
+                      <p className="text-xs text-muted-foreground">Order #{orderRef(o.id)} · {shortDate(o.created_at)} · {money(o.total)}</p>
+                    </div>
                   </div>
                   <StatusBadge status={o.status} />
                 </div>

@@ -3,7 +3,8 @@ import { toast } from 'sonner'
 import { Loader2, LifeBuoy, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
-import type { Ticket, TicketComment } from '@/lib/types'
+import type { Ticket, TicketComment, Order } from '@/lib/types'
+import { orderRef } from '@/lib/format'
 import { EmptyState, Page } from '@/components/Page'
 import TicketThread from '@/components/TicketThread'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
@@ -20,21 +21,37 @@ export default function MyTickets() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [comments, setComments] = useState<TicketComment[]>([])
   const [loading, setLoading] = useState(true)
+  const [orders, setOrders] = useState<Order[]>([])
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState(session?.user.email ?? '')
   const [subject, setSubject] = useState('')
   const [details, setDetails] = useState('')
   const [saving, setSaving] = useState(false)
+  const productImageByTicket = useMemo(() => {
+    const map = new Map<string, string | null>()
+    for (const t of tickets) {
+      const m = t.question.match(/Order ref: #([A-F0-9]{8})/i)
+      if (!m) continue
+      const ref = m[1].toUpperCase()
+      const o = orders.find((x) => orderRef(x.id) === ref)
+      if (o?.products?.image_url) map.set(t.id, o.products.image_url)
+    }
+    return map
+  }, [tickets, orders])
+
   const [fresh, setFresh] = useState<Set<string>>(new Set())
 
   const load = async () => {
-    const [t, c] = await Promise.all([
+    const [t, c, o] = await Promise.all([
       supabase.from('support_requests').select('*, profiles(full_name, email)').order('created_at', { ascending: false }),
       supabase.from('ticket_comments').select('*').order('created_at', { ascending: true }),
+      supabase.from('orders').select('*, products(name, image_url)').order('created_at', { ascending: false }),
     ])
     if (t.error) toast.error(t.error.message)
     const tk = (t.data as Ticket[]) ?? []
     const cm = (c.data as TicketComment[]) ?? []
+    setOrders((o.data as unknown as Order[]) ?? [])
+
     setTickets(tk)
     setComments(cm)
     setLoading(false)
@@ -99,12 +116,16 @@ export default function MyTickets() {
           {tickets.map((t) => (
             <Card key={t.id}>
               <CardContent className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-3">
+                  {productImageByTicket.get(t.id) && <img src={productImageByTicket.get(t.id)!} alt="" className="size-10 rounded object-cover" />}
+                  <div className="flex flex-wrap items-center gap-2">
                   <TicketStatusBadge status={t.status} />
                   {fresh.has(t.id) && <span className="rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">New reply</span>}
                   <span className="font-mono text-xs text-muted-foreground">#{t.id.slice(0, 8).toUpperCase()}</span>
                   <span className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</span>
                 </div>
+                </div>
+
                 <p className="whitespace-pre-wrap rounded-lg bg-muted/60 p-3 text-sm">{t.question}</p>
                 <TicketThread ticketId={t.id} comments={byTicket.get(t.id) ?? []} isAdmin={false} onPosted={load} allowReply={t.status !== 'resolved'} />
                 {t.status === 'resolved' && (
