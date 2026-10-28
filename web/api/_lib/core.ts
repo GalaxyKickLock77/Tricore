@@ -54,7 +54,7 @@ export interface BotReply {
 // Free-tier models on Groq, best accuracy first. Each model has its own rate limit, so the
 // list doubles as a fallback chain when one is throttled.
 export const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'nvidia/nemotron-3.5-super-vl-120b-a12b', extra: {} },
+  { id: 'reflection/beam-1.0', extra: {} },
 ]
 
 const MAX_PRODUCTS_IN_PROMPT = 20
