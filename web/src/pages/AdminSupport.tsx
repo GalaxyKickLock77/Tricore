@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { BookOpenText, LifeBuoy, Loader2, Mail, Sparkles } from 'lucide-react'
+import { BookOpenText, LifeBuoy, Loader2, Mail, Package, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { callSupportAi } from '@/lib/ai'
-import type { Ticket, TicketComment, TicketStatus } from '@/lib/types'
+import type { Ticket, TicketComment, TicketStatus, Order } from '@/lib/types'
+import { orderRef } from '@/lib/format'
 import { EmptyState, Page } from '@/components/Page'
 import TicketThread from '@/components/TicketThread'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
@@ -46,6 +47,7 @@ export default function AdminSupport() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [comments, setComments] = useState<TicketComment[]>([])
   const [loading, setLoading] = useState(true)
+  const [orders, setOrders] = useState<Order[]>([])
   const [filter, setFilter] = useState<'all' | TicketStatus>('open')
   const [busyAi, setBusyAi] = useState<string | null>(null)
   const [bulk, setBulk] = useState(false)
@@ -53,16 +55,30 @@ export default function AdminSupport() {
   const [savingKb, setSavingKb] = useState(false)
 
   const load = async () => {
-    const [t, c] = await Promise.all([
+    const [t, c, o] = await Promise.all([
       supabase.from('support_requests').select('*, profiles(full_name, email)').order('created_at', { ascending: false }),
       supabase.from('ticket_comments').select('*').order('created_at', { ascending: true }),
+      supabase.from('orders').select('*, products(name, image_url)').order('created_at', { ascending: false }),
     ])
     if (t.error) toast.error(t.error.message)
     if (c.error) toast.error(c.error.message)
     setTickets((t.data as Ticket[]) ?? [])
     setComments((c.data as TicketComment[]) ?? [])
+    setOrders((o.data as unknown as Order[]) ?? [])
     setLoading(false)
   }
+  const productImageByTicket = useMemo(() => {
+    const map = new Map<string, string | null>()
+    for (const t of tickets) {
+      const m = t.question.match(/Order ref: #([A-F0-9]{8})/i)
+      if (!m) continue
+      const ref = m[1].toUpperCase()
+      const o = orders.find((x) => orderRef(x.id) === ref)
+      if (o?.products?.image_url) map.set(t.id, o.products.image_url)
+    }
+    return map
+  }, [tickets, orders])
+
   useEffect(() => {
     load()
   }, [])
@@ -186,7 +202,12 @@ export default function AdminSupport() {
                       <span className="font-mono text-xs text-muted-foreground">#{ref}</span>
                       <span className="font-medium">{t.contact}</span>
                       <span className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</span>
-                      <span className="text-xs font-medium text-primary">{customerName(t)}</span>
+                      {productImageByTicket.get(t.id) ? (
+                      <img src={productImageByTicket.get(t.id)!} alt="" className="size-10 rounded object-cover" />
+                    ) : (
+                      <div className="grid size-10 place-items-center rounded bg-muted"><Package className="size-5 text-muted-foreground" /></div>
+                    )}
+                    <span className="text-xs font-medium text-primary">{customerName(t)}</span>
                       <span className="text-xs text-muted-foreground">· {t.contact}</span>
                       {!t.user_id && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">visitor (not signed in)</span>}
                     </div>
