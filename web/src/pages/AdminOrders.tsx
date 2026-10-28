@@ -162,18 +162,25 @@ export default function AdminOrders() {
             <Card key={o.id}>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{o.products?.name} × {o.quantity} · {money(o.total)}</p>
-                    <p className="text-xs text-muted-foreground">#{orderRef(o.id)} · {shortDate(o.created_at)} · {o.profiles?.email}</p>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-primary">{o.profiles?.email ?? 'Unknown customer'}</p>
+                    <p className="font-medium">{o.products?.name ?? 'Product'} <span className="text-muted-foreground">× {o.quantity}</span></p>
+                    <p className="text-xs text-muted-foreground">Order #{orderRef(o.id)} · {shortDate(o.created_at)}</p>
                   </div>
-                  <StatusBadge status={o.status} />
+                  <div className="text-right">
+                    <p className="text-lg font-bold">{money(o.total)}</p>
+                    <StatusBadge status={o.status} />
+                  </div>
                 </div>
 
                 {o.ship_line1 && (
-                  <p className="flex items-start gap-2 rounded-lg bg-muted/60 p-2 text-sm">
-                    <MapPin className="mt-0.5 size-4 shrink-0" />
-                    <span>{o.ship_name} · {o.ship_phone}<br />{o.ship_line1}{o.ship_line2 ? `, ${o.ship_line2}` : ''}, {o.ship_city}, {o.ship_state} {o.ship_pincode}</span>
-                  </p>
+                  <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                    <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <div>
+                      <p className="font-medium">{o.ship_name} · {o.ship_phone}</p>
+                      <p className="text-muted-foreground">{o.ship_line1}{o.ship_line2 ? `, ${o.ship_line2}` : ''}, {o.ship_city}, {o.ship_state} {o.ship_pincode}</p>
+                    </div>
+                  </div>
                 )}
 
                 {o.payment_reference && (
