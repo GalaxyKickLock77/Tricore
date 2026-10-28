@@ -80,6 +80,7 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
         break
       case 'cancelled':
         if (customer && customer !== admin) out.push(render({ to: customer, subject: `Order ${ref} cancelled`, lines: [`Your order ${ref} was cancelled.`, p.note ?? '', 'If you did not expect this, open a support ticket.'], link: { label: 'Get support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (admin) out.push(render({ to: admin, subject: `Order ${ref} cancelled by customer`, lines: [`Order ${ref} was cancelled by the customer.`, p.note ?? '', `Customer: ${p.customer_email ?? 'unknown'}`], link: { label: 'Open orders', url: `${appUrl}/admin/orders` }, tag: 'Admin' }))
         break
     }
   }
