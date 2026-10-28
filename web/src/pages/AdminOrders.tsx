@@ -95,7 +95,7 @@ export default function AdminOrders() {
       .maybeSingle()
     if (!ticket?.id) return
     if (message) {
-      await supabase.rpc('add_ticket_comment', { p_ticket: ticket.id, p_body: message, p_internal: false })
+      await supabase.rpc('admin_post_ticket_note', { p_ticket: ticket.id, p_body: message })
     }
     if (status && status !== ticket.status) {
       await supabase.rpc('admin_set_ticket_status', { p_ticket: ticket.id, p_status: status })
