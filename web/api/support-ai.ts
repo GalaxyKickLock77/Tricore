@@ -16,7 +16,7 @@ const limited = (key: string) => {
 
 /** Admin only. Reads the ticket with the admin's own token (database rules apply) and asks the AI for a draft. */
 export async function POST(request: Request): Promise<Response> {
-  const apiKey = process.env.OPPER_API_KEY
+  const apiKey = process.env.ANYROUTER_API_KEY
   const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL
   const key = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY
   if (!apiKey || !url || !key) return json({ error: 'AI is not configured' }, 500)

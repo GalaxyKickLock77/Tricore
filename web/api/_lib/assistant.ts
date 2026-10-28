@@ -28,12 +28,12 @@ interface ModelResult {
 
 // Assistant-only model order: cheapest first (greenference gpt-oss-20b), then groq gpt-oss-120b for quality.
 const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'gemini/gemma-4-31b', extra: {} },
+  { id: 'recursive/flint-v1.0', extra: {} },
 ]
 
 const UNAVAILABLE = "I'm having trouble reaching the assistant right now. Would you like me to connect you with my team?"
 const UNSURE = "I couldn't verify that answer from Tricore's live information. Would you like me to connect you with my team?"
-const FORBIDDEN = /(gsk_[a-z0-9]+|op-[a-z0-9]+|system prompt|api[_ ]?key)/i
+const FORBIDDEN = /(gsk_[a-z0-9]+|op-[a-z0-9]+|sk-ar-[a-z0-9]+|system prompt|api[_ ]?key)/i
 
 function systemPrompt(name: string | undefined, page: string, signedIn: boolean) {
   return `You are Tricore IT Solutions' AI shopping and account assistant. Understand natural language and use the available tools instead of relying on scripted questions.
@@ -82,7 +82,7 @@ async function requestOnce(
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20_000)
   try {
-    const res = await fetchImpl('https://api.opper.ai/v3/compat/chat/completions', {
+    const res = await fetchImpl('https://api.anyrouter.dev/api/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({

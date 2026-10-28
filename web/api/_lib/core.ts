@@ -54,7 +54,7 @@ export interface BotReply {
 // Free-tier models on Groq, best accuracy first. Each model has its own rate limit, so the
 // list doubles as a fallback chain when one is throttled.
 export const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'gemini/gemma-4-31b', extra: {} },
+  { id: 'recursive/flint-v1.0', extra: {} },
 ]
 
 const MAX_PRODUCTS_IN_PROMPT = 20
@@ -220,7 +220,7 @@ export async function callGroq(
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20000)
   try {
-    const res = await fetchImpl('https://api.opper.ai/v3/compat/chat/completions', {
+    const res = await fetchImpl('https://api.anyrouter.dev/api/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -300,7 +300,7 @@ export function tidy(text: string): string {
     .replace(/\b(your|the) (shopping )?cart\b/gi, 'your order')
 }
 
-const FORBIDDEN = /(gsk_[a-z0-9]+|op-[a-z0-9]+|system prompt|api[_ ]?key)/i
+const FORBIDDEN = /(gsk_[a-z0-9]+|op-[a-z0-9]+|sk-ar-[a-z0-9]+|system prompt|api[_ ]?key)/i
 
 // ───────── conversation understanding: which product, is it available, is the customer haggling ─────────
 const STOP = new Set(['the', 'and', 'for', 'with', 'of', 'in', 'to', 'on', 'an', 'inch'])
