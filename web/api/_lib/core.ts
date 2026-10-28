@@ -545,7 +545,7 @@ export function routeOrder(messages: ChatMessage[], context: ChatContext, focus:
 }
 
 // ───────── order status (read-only, only this customer's own orders) ─────────
-const STATUS_RE = /\b(where(?:'s| is)|status|track(?:ing)?|update)\b[\s\S]{0,30}\b(orders?|parcel|package|delivery|shipment)\b|\b(my|the) orders?\b[\s\S]{0,30}\b(status|shipped|arrived|delivered|delayed|late|pending|cancelled)\b|\b(not|haven't|hasn't|have not|has not)\b[\s\S]{0,20}\b(arrived|received|delivered|got)\b|\bwhat did i order\b|\bmy (latest|last|recent) order\b/i
+const STATUS_RE = /\b(where(?:'s| is)|status|track(?:ing)?|update)\b[\s\S]{0,30}\b(orders?|parcel|package|delivery|shipment)\b|\b(my|the) orders?\b[\s\S]{0,30}\b(status|shipped|arrived|delivered|delayed|late|pending|cancelled)\b|\b(not|haven't|hasn't|have not|has not)\b[\s\S]{0,20}\b(arrived|received|delivered|got)\b|\bwhat did i order\b|\bmy (latest|last|recent) order\b|\bhow many orders\b|\blist (my )?orders\b|\border (details|list|history)\b|\bshow (my )?orders\b/i
 export const wantsOrderStatus = (t: string) => STATUS_RE.test(t) && !/^\s*how (do|can|to)\b/i.test(t)
 
 const STATUS_NOTE: Record<string, string> = {
@@ -568,6 +568,14 @@ export function routeOrders(messages: ChatMessage[], context: ChatContext): BotR
   if (context.orders.length === 0) {
     return reply('answer', "I don't see any orders on your account yet. Once you place one, I can track it for you here.", 'question')
   }
+  const wantsList = /how many|list|show|details|history|all|my orders/i.test(last)
+  if (wantsList) {
+    const lines = context.orders.map((o, i) => `${i + 1}. ${o.quantity} � ${o.products?.name ?? 'item'} � ${STATUS_NOTE[o.status] ?? o.status} (${fmt(o.unit_price * o.quantity)}, ${new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`).join('\n')
+    return {
+      ...reply('answer', `Here are your ${context.orders.length} recent order${context.orders.length > 1 ? 's' : ''}:\n${lines}\n\nOpen My orders for full details and tracking.`, 'question'),
+      sources: [{ id: 'o1', title: 'Your orders' }],
+    }
+  }
   const o = context.orders[0]
   const nameOf = o.products?.name ?? 'your item'
   const when = new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -575,7 +583,7 @@ export function routeOrders(messages: ChatMessage[], context: ChatContext): BotR
   const delayed = /not (yet )?(arrived|received|delivered)|haven't|hasn't|delayed|late/i.test(messages[messages.length - 1].content)
   const tail = delayed && o.status !== 'cancelled' ? ' If it still doesn\'t look right, would you like me to connect you with my team?' : ''
   return {
-    ...reply(delayed && o.status !== 'cancelled' ? 'offer_team' : 'answer', `Your latest order, ${o.quantity} × ${nameOf} (${fmt(o.unit_price * o.quantity)}, placed ${when}): ${STATUS_NOTE[o.status] ?? o.status}${o.status === 'shipped' && o.tracking_number ? ` with ${o.courier ?? 'the courier'}, tracking number ${o.tracking_number}` : ''}.${more}${tail}`, 'question'),
+    ...reply(delayed && o.status !== 'cancelled' ? 'offer_team' : 'answer', `Your latest order, ${o.quantity} � ${nameOf} (${fmt(o.unit_price * o.quantity)}, placed ${when}): ${STATUS_NOTE[o.status] ?? o.status}${o.status === 'shipped' && o.tracking_number ? ` with ${o.courier ?? 'the courier'}, tracking number ${o.tracking_number}` : ''}.${more}${tail}`, 'question'),
     sources: [{ id: 'o1', title: 'Your orders' }],
   }
 }
