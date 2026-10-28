@@ -1,4 +1,4 @@
-// Store currency: Indian rupees (UPI / GPay only works in INR).
+// Store currency: Indian rupees.
 export const money = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(n))
 

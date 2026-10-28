@@ -305,7 +305,7 @@ const FORBIDDEN = /(gsk_[a-z0-9]+|system prompt|api[_ ]?key)/i
 const STOP = new Set(['the', 'and', 'for', 'with', 'of', 'in', 'to', 'on', 'an', 'inch'])
 const toks = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 1 && !STOP.has(w))
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
-/** Store currency is Indian rupees (UPI / GPay). Amounts are formatted like ₹1,299.00. */
+/** Store currency is Indian rupees. Amounts are formatted like ₹1,299.00. */
 const fmt = (n: number) => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const OOS_RE = /out of stock|sold out|unavailable|not available|restock|isn't available|is not available/i
 
