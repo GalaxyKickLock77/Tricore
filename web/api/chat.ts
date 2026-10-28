@@ -70,6 +70,8 @@ export async function POST(request: Request): Promise<Response> {
   if (fast) return json({ ...fast, memory })
 
   // Retrieval (RAG): the search uses the recent conversation and remembered products, not just the last message.
+  // Anonymous visitors never see the product catalog or prices; they are prompted to sign in.
+  const isSignedIn = !!request.headers.get('authorization')
   const query = [...memory, ...messages.slice(-4).map((m) => m.content.slice(0, 300))].join(' ').slice(0, 900)
 
   let context: ChatContext
@@ -81,6 +83,7 @@ export async function POST(request: Request): Promise<Response> {
     })
     if (!res.ok) throw new Error(String(res.status))
     context = (await res.json()) as ChatContext
+    if (!isSignedIn) { context.products = []; context.total_products = 0 }
   } catch {
     // Database unreachable: still answer basics from the built-in core articles, never about products.
     context = { articles: FALLBACK_ARTICLES, products: [] }
