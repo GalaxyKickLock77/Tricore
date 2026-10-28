@@ -176,6 +176,9 @@ set search_path = ''
 as $$
 declare v_admin text;
 begin
+  if new.reason is not null and new.reason ilike 'Order placed%' then
+    return new;
+  end if;
   select value into v_admin from public.store_settings where key = 'support_email';
   perform public.send_notification(jsonb_build_object(
     'type', 'ticket', 'event', 'opened', 'ref', upper(left(new.id::text, 8)),

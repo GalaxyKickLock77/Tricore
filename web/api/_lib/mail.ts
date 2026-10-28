@@ -57,8 +57,8 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
   if (p.type === 'order') {
     switch (p.event) {
       case 'order_placed':
-        if (customer) out.push(render({ to: customer, subject: `Order ${ref} placed`, lines: [`Thank you for your order ${ref}.`, item, 'To complete it, please pay with GPay from My orders. We ship once the payment reaches our bank and is confirmed.'], link: { label: 'Pay now', url: orders }, replyTo: admin ?? undefined }))
-        if (admin) out.push(render({ to: admin, subject: `New order ${ref}`, lines: [`New order ${ref} from ${p.customer_email ?? 'a customer'}.`, item, 'Waiting for the customer to pay.'], link: { label: 'Open orders', url: `${appUrl}/admin/orders` } }))
+        if (customer) out.push(render({ to: customer, subject: `Order ${ref} placed`, lines: [`Thank you for your order ${ref}.`, item, 'We have opened a support ticket for you. Our team will contact you shortly to confirm payment and delivery.'], link: { label: 'View my tickets', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined }))
+        if (admin) out.push(render({ to: admin, subject: `New order ${ref}`, lines: [`New order ${ref} from ${p.customer_email ?? 'a customer'}.`, item, 'A support ticket has been opened. Please contact the customer to confirm payment and delivery.'], link: { label: 'Open orders', url: `${appUrl}/admin/orders` } }))
         break
       case 'payment_submitted':
         if (customer) out.push(render({ to: customer, subject: `We received your payment details for ${ref}`, lines: [`Thanks! We received your payment reference${p.payment_reference ? ` ${p.payment_reference}` : ''} for order ${ref}.`, 'Our team is verifying it in the bank and will confirm shortly.'], link: { label: 'Track your order', url: orders }, replyTo: admin ?? undefined }))
