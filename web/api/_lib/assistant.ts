@@ -16,6 +16,7 @@ export interface AssistantReply extends BotReply {
 interface ModelMessage {
   role: 'assistant'
   content: string | null
+  reasoning_content?: string
   tool_calls?: AssistantToolCall[]
 }
 
@@ -202,7 +203,11 @@ export async function runAssistant(opts: {
       continue
     }
 
-    const raw = typeof message.content === 'string' ? message.content.trim() : ''
+    const raw = typeof message.content === 'string' && message.content.trim()
+      ? message.content.trim()
+      : typeof (message as any).reasoning_content === 'string'
+        ? (message as any).reasoning_content.trim()
+        : ''
     const parsed = extractJson(raw) as Record<string, unknown> | null
     if (!parsed || typeof parsed.answer !== 'string') {
       if (round < 2) {

@@ -235,7 +235,7 @@ export async function callGroq(
     })
     if (!res.ok) return { ok: false, status: res.status }
     const data = (await res.json()) as { choices?: { message?: { content?: string | null } }[] }
-    const content = data.choices?.[0]?.message?.content
+    const content = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content
     if (!content) return { ok: false, status: 502 }
     return { ok: true, content }
   } catch {
