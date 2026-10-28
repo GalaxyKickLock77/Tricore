@@ -28,7 +28,7 @@ interface ModelResult {
 
 // Assistant-only model order: cheapest first (greenference gpt-oss-20b), then groq gpt-oss-120b for quality.
 const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'reflection/beam-1.0', extra: {} },
+  { id: 'nvidia/nemotron-3.5-super-vl-120b-a12b', extra: {} },
 ]
 
 const UNAVAILABLE = "I'm having trouble reaching the assistant right now. Would you like me to connect you with my team?"
