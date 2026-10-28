@@ -1,5 +1,4 @@
 import {
-  MODELS,
   extractJson,
   numbersAreGrounded,
   offer,
@@ -26,9 +25,14 @@ interface ModelResult {
   rateLimited: boolean
 }
 
+// Assistant-only model order: cheapest first (greenference gpt-oss-20b), then groq gpt-oss-120b for quality.
+const MODELS: { id: string; extra: Record<string, unknown> }[] = [
+  { id: 'gemini/gemma-4-31b', extra: {} },
+]
+
 const UNAVAILABLE = "I'm having trouble reaching the assistant right now. Would you like me to connect you with my team?"
 const UNSURE = "I couldn't verify that answer from Tricore's live information. Would you like me to connect you with my team?"
-const FORBIDDEN = /(gsk_[a-z0-9]+|system prompt|api[_ ]?key)/i
+const FORBIDDEN = /(gsk_[a-z0-9]+|op-[a-z0-9]+|system prompt|api[_ ]?key)/i
 
 function systemPrompt(name: string | undefined, page: string, signedIn: boolean) {
   return `You are Tricore IT Solutions' AI shopping and account assistant. Understand natural language and use the available tools instead of relying on scripted questions.
@@ -51,6 +55,20 @@ Use source ids returned by tools. Greetings, small talk, off-topic redirects, an
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Returns the answer JSON from a rejected {"name":"JSON","arguments":{...}} generation, or null.
+function recoverPseudoJson(raw: string): string | null {
+  try {
+    const failed = (JSON.parse(raw) as { error?: { failed_generation?: unknown } }).error?.failed_generation
+    if (typeof failed !== 'string') return null
+    const call = JSON.parse(failed) as { name?: unknown; arguments?: unknown }
+    if (typeof call.name !== 'string' || call.name.toLowerCase() !== 'json') return null
+    if (!call.arguments || typeof call.arguments !== 'object' || typeof (call.arguments as { answer?: unknown }).answer !== 'string') return null
+    return JSON.stringify(call.arguments)
+  } catch {
+    return null
+  }
+}
+
 // One request to one model. Returns the message, or the HTTP status and Retry-After when it failed.
 async function requestOnce(
   apiKey: string,
@@ -59,11 +77,11 @@ async function requestOnce(
   fetchImpl: typeof fetch,
   allowTools: boolean,
   forceTool?: string,
-): Promise<{ message?: ModelMessage; status?: number; retryAfterMs?: number }> {
+): Promise<{ message?: ModelMessage; status?: number; retryable?: boolean; retryAfterMs?: number }> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20_000)
   try {
-    const res = await fetchImpl('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetchImpl('https://api.opper.ai/v3/compat/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -76,16 +94,26 @@ async function requestOnce(
           : allowTools ? 'auto' : 'none',
         parallel_tool_calls: true,
         temperature: 0.2,
-        max_completion_tokens: 650,
+        max_completion_tokens: 2000,
         ...model.extra,
       }),
       signal: ctl.signal,
     })
     if (!res.ok) {
       const seconds = Number(res.headers.get('retry-after'))
-      const detail = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300)
+      const raw = await res.text().catch(() => '')
+      const detail = raw.replace(/\s+/g, ' ').slice(0, 300)
       console.warn(`[assistant] ${model.id} HTTP ${res.status} retry-after=${res.headers.get('retry-after') ?? '-'} ${detail}`)
-      return { status: res.status, retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined }
+      // gpt-oss sometimes writes its answer as a pseudo tool call named "JSON". Groq rejects it with 400, but the
+      // rejected generation is in error.failed_generation, so the answer payload can be used directly.
+      const recovered = recoverPseudoJson(raw)
+      if (recovered) return { message: { role: 'assistant', content: recovered } }
+      // A malformed tool call (400 tool_use_failed) is random sampling noise, so one more try usually works.
+      const malformed = res.status === 400 && raw.includes('tool_use_failed')
+      // A daily token limit (TPD) does not clear in seconds, so do not retry it on this model.
+      const dailyLimit = res.status === 429 && /per day|TPD/.test(raw)
+      const retryable = malformed || (!dailyLimit && (res.status === 429 || res.status >= 500))
+      return { status: res.status, retryable, retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined }
     }
     const data = await res.json() as { choices?: { message?: ModelMessage }[] }
     return { message: data.choices?.[0]?.message }
@@ -110,8 +138,7 @@ async function callModel(
       const result = await requestOnce(apiKey, model, messages, fetchImpl, allowTools, forceTool)
       if (result.message) return { message: result.message, model: model.id, rateLimited }
       if (result.status === 429) rateLimited = true
-      const retryable = result.status === 429 || (result.status ?? 0) >= 500
-      if (!retryable || attempt === 2) break
+      if (!result.retryable || attempt === 2) break
       // Wait for Retry-After when given, otherwise back off 1.5s, 3s. Keep the total wait short.
       await sleep(Math.min(result.retryAfterMs ?? 1500 * 2 ** attempt, 6000))
     }
