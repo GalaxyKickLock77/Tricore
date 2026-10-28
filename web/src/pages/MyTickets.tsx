@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { Loader2, LifeBuoy, Plus } from 'lucide-react'
+import { Loader2, LifeBuoy, Package, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import type { Ticket, TicketComment, Order } from '@/lib/types'
@@ -117,7 +117,11 @@ export default function MyTickets() {
             <Card key={t.id}>
               <CardContent className="space-y-3">
                 <div className="flex items-center gap-3">
-                  {productImageByTicket.get(t.id) && <img src={productImageByTicket.get(t.id)!} alt="" className="size-10 rounded object-cover" />}
+                  {productImageByTicket.get(t.id) ? (
+                    <img src={productImageByTicket.get(t.id)!} alt="" className="size-10 rounded object-cover" />
+                  ) : (
+                    <div className="grid size-10 place-items-center rounded bg-muted"><Package className="size-5 text-muted-foreground" /></div>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                   <TicketStatusBadge status={t.status} />
                   {fresh.has(t.id) && <span className="rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">New reply</span>}
