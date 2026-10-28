@@ -100,6 +100,24 @@ export default function AdminProducts() {
       description="Add, edit, hide, or remove products in the store."
       actions={<Button size="lg" onClick={openNew}><Plus className="size-4" />Add product</Button>}
     >
+      {!loading && items.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Total products</p>
+            <p className="text-2xl font-semibold">{items.length}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Sold out</p>
+            <p className="text-2xl font-semibold text-destructive">{items.filter((p) => p.stock <= 0).length}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Yet to sell (stock)</p>
+            <p className="text-2xl font-semibold">{items.reduce((s, p) => s + (p.stock > 0 ? p.stock : 0), 0)}</p>
+            <p className="text-xs text-muted-foreground">{items.filter((p) => p.stock > 0).length} products in stock</p>
+          </Card>
+        </div>
+      )}
+
       {loading ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : items.length === 0 ? (
