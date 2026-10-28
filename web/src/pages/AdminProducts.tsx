@@ -21,6 +21,7 @@ const empty = { name: '', description: '', price: '0', stock: '0', image_url: ''
 
 export default function AdminProducts() {
   const [items, setItems] = useState<Product[]>([])
+  const [soldByProduct, setSoldByProduct] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState<string | null>(null)
@@ -29,9 +30,18 @@ export default function AdminProducts() {
   const [toDelete, setToDelete] = useState<Product | null>(null)
 
   const load = async () => {
-    const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false })
+    const [{ data, error }, { data: orders }] = await Promise.all([
+      supabase.from('products').select('*').order('created_at', { ascending: false }),
+      supabase.from('orders').select('product_id, quantity, status'),
+    ])
     if (error) toast.error(error.message)
     setItems((data as Product[]) ?? [])
+    const sold: Record<string, number> = {}
+    for (const o of (orders as { product_id: string; quantity: number; status: string }[]) ?? []) {
+      if (o.status === 'cancelled') continue
+      sold[o.product_id] = (sold[o.product_id] ?? 0) + (o.quantity ?? 0)
+    }
+    setSoldByProduct(sold)
     setLoading(false)
   }
   useEffect(() => {
@@ -129,7 +139,9 @@ export default function AdminProducts() {
               <TableRow>
                 <TableHead>Product</TableHead>
                 <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">Stock</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Sold</TableHead>
+                <TableHead className="text-right">Left</TableHead>
                 <TableHead>Visibility</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -139,7 +151,10 @@ export default function AdminProducts() {
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell className="text-right">{money(p.price)}</TableCell>
-                  <TableCell className="text-right">{p.stock}</TableCell>
+                    <TableCell className="text-right">{(soldByProduct[p.id] ?? 0) + p.stock}</TableCell>
+                    <TableCell className="text-right">{soldByProduct[p.id] ?? 0}</TableCell>
+                    <TableCell className="text-right">{p.stock}</TableCell>
+
                   <TableCell>
                     <Badge variant={p.is_active ? 'secondary' : 'outline'}>{p.is_active ? 'Visible' : 'Hidden'}</Badge>
                   </TableCell>
