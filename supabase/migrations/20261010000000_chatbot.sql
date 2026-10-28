@@ -76,11 +76,6 @@ begin
   if octet_length(coalesce(p_transcript, '[]'::jsonb)::text) > 20000 then
     raise exception 'Conversation is too long';
   end if;
-  -- basic abuse control: at most 5 requests per contact per hour
-  if (select count(*) from public.support_requests
-       where contact = v_contact and created_at > now() - interval '1 hour') >= 5 then
-    raise exception 'Too many requests. Our team will get back to you soon.';
-  end if;
 
   insert into public.support_requests (user_id, contact, question, reason, transcript)
   values ((select auth.uid()), v_contact, v_question, left(p_reason, 500), coalesce(p_transcript, '[]'::jsonb))
