@@ -77,6 +77,7 @@ export default function AdminOrders() {
     { label: 'Money received', value: money(orders.filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + Number(o.total), 0)), icon: BadgeIndianRupee },
   ]
 
+  const actionOrders = orders.filter((o) => o.status === 'awaiting_payment' || o.status === 'paid')
   const shown = orders.filter((o) => filter === 'all' || (filter === 'action' ? o.status === 'awaiting_payment' || o.status === 'paid' : o.status === filter))
 
   const run = async (fn: string, args: Record<string, unknown>, ok: string) => {
@@ -113,16 +114,27 @@ export default function AdminOrders() {
         ))}
       </div>
 
+      {actionOrders.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <div className="flex items-center gap-2">
+            <Clock className="size-4 text-amber-600" />
+            <span className="font-medium">{actionOrders.length} order(s) need your action</span>
+            <span className="text-muted-foreground">({count('awaiting_payment')} awaiting payment, {count('paid')} ready to ship)</span>
+          </div>
+          <Button size="lg" variant="outline" onClick={() => setFilter('action')}>Show them</Button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <Button key={f.key} size="lg" variant={filter === f.key ? 'default' : 'outline'} onClick={() => setFilter(f.key)}>{f.label}</Button>
         ))}
+        <Button size="lg" variant="outline" asChild><a href="/admin/support">Support tickets</a></Button>
       </div>
 
       {loading ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : shown.length === 0 ? (
-        <EmptyState icon={<ReceiptText />} title="Nothing here" hint="New orders and payments will appear automatically." />
+        <EmptyState icon={<ReceiptText />} title="Nothing here" hint={filter === 'action' ? 'No orders need action right now.' : 'New orders will appear automatically.'} />
       ) : (
         <div className="space-y-4">
           {shown.map((o) => (
@@ -155,7 +167,7 @@ export default function AdminOrders() {
 
                 <div className="flex flex-wrap gap-2">
                   {o.status === 'awaiting_payment' && (
-                    <Button size="lg" variant="outline" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed')}>Mark as paid (received in bank)</Button>
+                    <Button size="lg" variant="outline" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed')}>Mark as paid (after contact)</Button>
                   )}
                   {o.status === 'paid' && (
                     <Button size="lg" onClick={() => setDlg({ kind: 'ship', order: o })}><Truck className="size-4" />Ship order</Button>
