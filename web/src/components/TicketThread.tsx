@@ -11,11 +11,12 @@ import { cn } from '@/lib/utils'
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 /** Comment thread plus reply box. Used by customers (Support) and by admins (Support tickets). */
-export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: {
+export default function TicketThread({ ticketId, comments, isAdmin, onPosted, allowReply = true }: {
   ticketId: string
   comments: TicketComment[]
   isAdmin: boolean
   onPosted: () => void
+  allowReply?: boolean
 }) {
   const [body, setBody] = useState('')
   const [internal, setInternal] = useState(false)
@@ -89,6 +90,7 @@ export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: 
         </ul>
       )}
 
+      {allowReply ? (
       <form onSubmit={post} className="space-y-2">
         <Textarea
           aria-label={isAdmin ? 'Write an update' : 'Write a reply'}
@@ -128,6 +130,7 @@ export default function TicketThread({ ticketId, comments, isAdmin, onPosted }: 
           </Button>
         </div>
       </form>
+      ) : null}
     </div>
   )
 }

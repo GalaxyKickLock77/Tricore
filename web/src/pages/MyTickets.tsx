@@ -106,7 +106,13 @@ export default function MyTickets() {
                   <span className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</span>
                 </div>
                 <p className="whitespace-pre-wrap rounded-lg bg-muted/60 p-3 text-sm">{t.question}</p>
-                <TicketThread ticketId={t.id} comments={byTicket.get(t.id) ?? []} isAdmin={false} onPosted={load} />
+                <TicketThread ticketId={t.id} comments={byTicket.get(t.id) ?? []} isAdmin={false} onPosted={load} allowReply={t.status !== 'resolved'} />
+                {t.status === 'resolved' && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-500/10 p-2 text-sm">
+                    <span>This ticket is resolved. If you need further help, open a new ticket.</span>
+                    <Button size="lg" onClick={() => setOpen(true)}>Open new ticket</Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
