@@ -59,6 +59,7 @@ RULES
 - If the customer needs a decision from the agent (refund, discount, exception, delivery date, payment dispute), do NOT decide it. Write a polite holding line and put the question for the agent in agent_notes.
 - Warm, concise (under 120 words), plain text, no markdown. Use the customer's language of their latest message. Greet by first name if known. Sign off "Tricore Support". Prices are in Indian rupees.
 - Answer from the customer's order data when relevant (status, courier, tracking).
+- For order-related tickets: our team reaches out to the customer to confirm the order and arrange payment and delivery directly. Do NOT ask the customer to confirm the order or to share payment details themselves; instead state that we will contact/handle it and ask them to reply if they have questions.
 ${OUTPUT_JSON} Keys: {"reply": string, "agent_notes": string[], "confidence": "high" | "medium" | "low"}`,
   summarize: `You classify a support ticket for the admin queue of Tricore IT Solutions.
 ${OUTPUT_JSON} Keys: {"summary": string (max 25 words, English), "category": "payment" | "delivery" | "order" | "product" | "account" | "complaint" | "other", "priority": "low" | "normal" | "high" | "urgent", "sentiment": "calm" | "worried" | "angry"}
