@@ -73,8 +73,10 @@ export default function MyOrders() {
   const cancel = async (id: string) => {
     if (!confirm('Cancel this order?')) return
     const { error } = await supabase.rpc('cancel_my_order', { p_order: id })
-    if (error) toast.error(error.message)
-    else toast.success('Order cancelled')
+    if (error) { toast.error(error.message); return }
+    // resolve the linked support ticket too
+    try { await supabase.rpc('resolve_ticket_for_order', { p_order: id }) } catch { /* ignore */ }
+    toast.success('Order cancelled')
     load()
   }
   return (
