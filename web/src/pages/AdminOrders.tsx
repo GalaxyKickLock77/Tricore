@@ -98,7 +98,7 @@ export default function AdminOrders() {
       await supabase.rpc('add_ticket_comment', { p_ticket: ticket.id, p_body: message, p_internal: false })
     }
     if (status && status !== ticket.status) {
-      await supabase.from('support_requests').update({ status }).eq('id', ticket.id)
+      await supabase.rpc('admin_set_ticket_status', { p_ticket: ticket.id, p_status: status })
     }
   }
 
