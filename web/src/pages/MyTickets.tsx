@@ -51,6 +51,12 @@ export default function MyTickets() {
   }
   useEffect(() => {
     load()
+    const ch = supabase
+      .channel('my-tickets-page')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_requests' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_comments' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
   }, [])
 
   const byTicket = useMemo(() => {

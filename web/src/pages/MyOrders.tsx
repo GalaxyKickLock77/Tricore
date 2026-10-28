@@ -38,6 +38,14 @@ export default function MyOrders() {
   }
   useEffect(() => {
     load()
+    const ch = supabase
+      .channel('my-orders-page')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_events' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_requests' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_comments' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
   }, [])
 
   const byOrder = useMemo(() => {
