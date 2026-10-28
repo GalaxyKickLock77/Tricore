@@ -512,7 +512,7 @@ export function parseQuantity(text: string, p?: KbProduct): number {
 }
 
 const ORDER_OFFER = 'Want me to start your order?'
-const OFFERED_ORDER_RE = /start your order|place the order for you|order (it|that|this) for you|want me to order/i
+const OFFERED_ORDER_RE = /start your order|place the order for you|order (it|that|this) for you|want me to order|take you to (the )?checkout|opening the checkout|ready to proceed/i
 
 const ORDER_ABOUT_EXISTING_RE = /\bmy orders?\b|\b(cancel|track|status|refund|return|invoice|history|delivery|shipped|arrived|payment)\b/i
 
@@ -571,7 +571,7 @@ export function routeOrders(messages: ChatMessage[], context: ChatContext): BotR
   }
   const wantsList = /how many|list|show|details|history|all|my orders/i.test(last)
   if (wantsList) {
-    const lines = context.orders.map((o, i) => `${i + 1}. ${o.quantity} × ${o.products?.name ?? 'item'} — ${STATUS_NOTE[o.status] ?? o.status} (${fmt(o.unit_price * o.quantity)}, ${new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`).join('\n')
+    const lines = context.orders.map((o, i) => `${i + 1}. ${o.quantity} ï¿½ ${o.products?.name ?? 'item'} ï¿½ ${STATUS_NOTE[o.status] ?? o.status} (${fmt(o.unit_price * o.quantity)}, ${new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`).join('\n')
     return {
       ...reply('answer', `Here are your ${context.orders.length} recent order${context.orders.length > 1 ? 's' : ''}:\n${lines}\n\nOpen My orders for full details and tracking.`, 'question'),
       sources: [{ id: 'o1', title: 'Your orders' }],
@@ -584,7 +584,7 @@ export function routeOrders(messages: ChatMessage[], context: ChatContext): BotR
   const delayed = /not (yet )?(arrived|received|delivered)|haven't|hasn't|delayed|late/i.test(messages[messages.length - 1].content)
   const tail = delayed && o.status !== 'cancelled' ? ' If it still doesn\'t look right, would you like me to connect you with my team?' : ''
   return {
-    ...reply(delayed && o.status !== 'cancelled' ? 'offer_team' : 'answer', `Your latest order, ${o.quantity} × ${nameOf} (${fmt(o.unit_price * o.quantity)}, placed ${when}): ${STATUS_NOTE[o.status] ?? o.status}${o.status === 'shipped' && o.tracking_number ? ` with ${o.courier ?? 'the courier'}, tracking number ${o.tracking_number}` : ''}.${more}${tail}`, 'question'),
+    ...reply(delayed && o.status !== 'cancelled' ? 'offer_team' : 'answer', `Your latest order, ${o.quantity} ï¿½ ${nameOf} (${fmt(o.unit_price * o.quantity)}, placed ${when}): ${STATUS_NOTE[o.status] ?? o.status}${o.status === 'shipped' && o.tracking_number ? ` with ${o.courier ?? 'the courier'}, tracking number ${o.tracking_number}` : ''}.${more}${tail}`, 'question'),
     sources: [{ id: 'o1', title: 'Your orders' }],
   }
 }
