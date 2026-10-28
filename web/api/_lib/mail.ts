@@ -37,13 +37,13 @@ const esc = (s: unknown) =>
 const inr = (n: unknown) => `₹${Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const safeUrl = (u: unknown) => (typeof u === 'string' && /^https?:\/\/[^\s]{3,300}$/i.test(u) ? u : null)
 
-function render(opts: { to: string; subject: string; lines: string[]; link?: { label: string; url: string }; replyTo?: string }): Email {
+function render(opts: { to: string; subject: string; lines: string[]; link?: { label: string; url: string }; replyTo?: string; tag?: 'Admin' | 'Customer' }): Email {
   const text = [...opts.lines, ...(opts.link ? ['', `${opts.link.label}: ${opts.link.url}`] : []), '', 'Tricore IT Solutions'].join('\n')
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#111">
 ${opts.lines.map((l) => (l ? `<p style="margin:0 0 10px">${esc(l)}</p>` : '')).join('\n')}
 ${opts.link ? `<p style="margin:18px 0"><a href="${esc(opts.link.url)}" style="background:#4f46e5;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">${esc(opts.link.label)}</a></p>` : ''}
 <p style="color:#666;font-size:12px;margin-top:24px">Tricore IT Solutions</p></div>`
-  return { to: opts.to, subject: `Tricore: ${opts.subject}`, text, html, replyTo: opts.replyTo }
+  return { to: opts.to, subject: `Tricore: ${opts.tag ? `[${opts.tag}] ` : ''}${opts.subject}`, text, html, replyTo: opts.replyTo }
 }
 
 export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
@@ -57,12 +57,12 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
   if (p.type === 'order') {
     switch (p.event) {
       case 'order_placed':
-        if (customer) out.push(render({ to: customer, subject: `Order ${ref} placed`, lines: [`Thank you for your order ${ref}.`, item, 'We have opened a support ticket for you. Our team will contact you shortly to confirm payment and delivery.'], link: { label: 'View my tickets', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined }))
-        if (admin) out.push(render({ to: admin, subject: `New order ${ref}`, lines: [`New order ${ref} from ${p.customer_email ?? 'a customer'}.`, item, 'A support ticket has been opened. Please contact the customer to confirm payment and delivery.'], link: { label: 'Open orders', url: `${appUrl}/admin/orders` } }))
+        if (customer) out.push(render({ to: customer, subject: `Order ${ref} placed`, lines: [`Thank you for your order ${ref}.`, item, 'We have opened a support ticket for you. Our team will contact you shortly to confirm payment and delivery.'], link: { label: 'View my tickets', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined, tag: 'Customer' }))
+        if (admin) out.push(render({ to: admin, subject: `New order ${ref}`, lines: [`New order ${ref} from ${p.customer_email ?? 'a customer'}.`, item, 'A support ticket has been opened. Please contact the customer to confirm payment and delivery.'], link: { label: 'Open orders', url: `${appUrl}/admin/orders` }, tag: 'Admin' }))
         break
       case 'payment_submitted':
         if (customer) out.push(render({ to: customer, subject: `We received your payment details for ${ref}`, lines: [`Thanks! We received your payment reference${p.payment_reference ? ` ${p.payment_reference}` : ''} for order ${ref}.`, 'Our team is verifying it in the bank and will confirm shortly.'], link: { label: 'Track your order', url: orders }, replyTo: admin ?? undefined }))
-        if (admin) out.push(render({ to: admin, subject: `Verify payment for ${ref}`, lines: [`${p.customer_email ?? 'A customer'} says they paid ${inr(p.total)} for order ${ref}.`, `UPI transaction ID: ${p.payment_reference ?? '(not given)'}`, 'Check your bank statement for this amount and ID, then confirm or reject the payment.'], link: { label: 'Verify payment', url: `${appUrl}/admin/orders` } }))
+        if (admin) out.push(render({ to: admin, subject: `Verify payment for ${ref}`, lines: [`${p.customer_email ?? 'A customer'} says they paid ${inr(p.total)} for order ${ref}.`, `UPI transaction ID: ${p.payment_reference ?? '(not given)'}`, 'Check your bank statement for this amount and ID, then confirm or reject the payment.'], link: { label: 'Verify payment', url: `${appUrl}/admin/orders` }, tag: 'Admin' }))
         break
       case 'payment_rejected':
         if (customer) out.push(render({ to: customer, subject: `We could not verify the payment for ${ref}`, lines: [`We could not verify the payment for order ${ref}.`, p.note ?? '', 'Please check your payment and submit the correct UPI transaction ID.'], link: { label: 'Open my order', url: orders }, replyTo: admin ?? undefined }))
@@ -89,7 +89,7 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
     switch (p.event) {
       case 'opened':
         if (contactEmail) out.push(render({ to: contactEmail, subject: `We received your support ticket ${ref}`, lines: ['Thanks for contacting us. Our team will reply soon.', `Your message: ${p.question ?? ''}`], link: { label: 'View Support', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined }))
-        if (admin) out.push(render({ to: admin, subject: `New support ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.question ?? ''], link: { label: 'Open tickets', url: `${appUrl}/admin/support` } }))
+        if (admin) out.push(render({ to: admin, subject: `New support ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.question ?? ''], link: { label: 'Open tickets', url: `${appUrl}/admin/support` }, tag: 'Admin' }))
         break
       case 'reply':
         if (contactEmail) out.push(render({ to: contactEmail, subject: `New reply on your ticket ${ref}${p.status ? ` (${p.status})` : ''}`, lines: ['Our team replied to your ticket:', '', p.body ?? '', '', ...(p.status ? [`Ticket status: ${p.status}`] : [])], link: { label: 'View the conversation', url: `${appUrl}/tickets` }, replyTo: admin ?? undefined }))
@@ -105,7 +105,7 @@ export function buildEmails(p: NotifyPayload, appUrl: string): Email[] {
         break
       }
       case 'customer_reply':
-        if (admin) out.push(render({ to: admin, subject: `Customer replied on ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.body ?? '', ...(p.status ? [`Ticket status: ${p.status}`] : [])], link: { label: 'Open tickets', url: `${appUrl}/admin/support` } }))
+        if (admin) out.push(render({ to: admin, subject: `Customer replied on ticket ${ref}`, lines: [`From: ${p.contact ?? 'unknown'}`, p.body ?? '', ...(p.status ? [`Ticket status: ${p.status}`] : [])], link: { label: 'Open tickets', url: `${appUrl}/admin/support` }, tag: 'Admin' }))
         break
     }
   }
@@ -126,3 +126,5 @@ export function smtpMailer(env: Record<string, string | undefined> = process.env
   const transport = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } })
   return { mailer: { send: (m) => transport.sendMail(m) }, from: env.MAIL_FROM ?? `Tricore IT Solutions <${user}>` }
 }
+
+
