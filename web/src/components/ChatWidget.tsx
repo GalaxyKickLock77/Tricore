@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bot, CheckCircle2, Headset, LifeBuoy, Loader2, Mail, MessageCircle, Send, ShoppingBag, X } from 'lucide-react'
+import { ArrowRight, Bot, CheckCircle2, Headset, LifeBuoy, Loader2, Mail, MessageCircle, Send, ShoppingBag, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { contact } from '@/config'
@@ -14,6 +14,7 @@ interface Msg {
   role: 'user' | 'assistant'
   content: string
   sources?: { id: string; title: string }[]
+  link?: { path: string; label: string }
 }
 
 interface OrderProposal {
@@ -30,11 +31,12 @@ interface BotReply {
   sources: { id: string; title: string }[]
   handoffReason?: string
   memory?: string[]
+  link?: { path: string; label: string }
 }
 
 const GREETING: Msg = {
   role: 'assistant',
-  content: 'Hi! I\'m the Tricore assistant. Ask me about our products, how ordering works, or your account.',
+  content: 'Hi! I\'m the Tricore AI assistant. Ask me about products, checkout, orders, support tickets, or your account.',
 }
 const SUGGESTIONS = ['What do you sell?', 'How do I place an order?', 'Where can I see my order status?']
 const HIDDEN_ON = ['/login', '/signup']
@@ -88,12 +90,13 @@ export default function ChatWidget() {
           messages: next.slice(1).slice(-8).map(({ role, content }) => ({ role, content })),
           name: firstName,
           memory: memoryRef.current,
+          page: pathname,
         }),
       })
       if (!res.ok) throw new Error(String(res.status))
       const reply = (await res.json()) as BotReply
       if (Array.isArray(reply.memory)) memoryRef.current = reply.memory
-      setMessages((m) => [...m, { role: 'assistant', content: reply.answer, sources: reply.sources }])
+      setMessages((m) => [...m, { role: 'assistant', content: reply.answer, sources: reply.sources, link: reply.link }])
       if (reply.action === 'handoff') setHandoff({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
       if (reply.action === 'confirm_order' && reply.order) setProposal(reply.order)
       if (reply.action === 'offer_team') setOffer({ question: lastTopic(next, question), reason: reply.handoffReason ?? '' })
@@ -157,7 +160,7 @@ export default function ChatWidget() {
               <span className="grid size-8 place-items-center rounded-full bg-white/15"><Bot className="size-4" /></span>
               <div className="flex-1 leading-tight">
                 <p className="text-sm font-semibold">Tricore Assistant</p>
-                <p className="text-xs text-primary-foreground/70">Answers from Tricore information only</p>
+                <p className="text-xs text-primary-foreground/70">Live product, order &amp; support help</p>
               </div>
               <Button variant="ghost" size="icon-sm" aria-label="Close chat" className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground" onClick={() => setOpen(false)}>
                 <X className="size-4" />
@@ -171,6 +174,11 @@ export default function ChatWidget() {
                     <p className="whitespace-pre-wrap">{m.content}</p>
                     {!!m.sources?.length && (
                       <p className="mt-1.5 text-xs text-muted-foreground">Based on: {m.sources.map((s) => s.title).join(', ')}</p>
+                    )}
+                    {m.link && (
+                      <Button asChild size="sm" className="mt-2 w-full">
+                        <Link to={m.link.path} onClick={() => setOpen(false)}>{m.link.label}<ArrowRight className="size-3.5" /></Link>
+                      </Button>
                     )}
                   </div>
                 </div>
