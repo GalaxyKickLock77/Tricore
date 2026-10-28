@@ -77,8 +77,8 @@ export default function AdminOrders() {
     { label: 'Money received', value: money(orders.filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + Number(o.total), 0)), icon: BadgeIndianRupee },
   ]
 
-  const actionOrders = orders.filter((o) => o.status === 'awaiting_payment' || o.status === 'paid')
-  const shown = orders.filter((o) => filter === 'all' || (filter === 'action' ? o.status === 'awaiting_payment' || o.status === 'paid' : o.status === filter))
+  const actionOrders = orders.filter((o) => o.status === 'awaiting_payment' || o.status === 'paid' || o.status === 'shipped')
+  const shown = orders.filter((o) => filter === 'all' || (filter === 'action' ? o.status === 'awaiting_payment' || o.status === 'paid' || o.status === 'shipped' : o.status === filter))
 
   const run = async (fn: string, args: Record<string, unknown>, ok: string) => {
     setBusy(true)
@@ -119,7 +119,7 @@ export default function AdminOrders() {
           <div className="flex items-center gap-2">
             <Clock className="size-4 text-amber-600" />
             <span className="font-medium">{actionOrders.length} order(s) need your action</span>
-            <span className="text-muted-foreground">({count('awaiting_payment')} awaiting payment, {count('paid')} ready to ship)</span>
+            <span className="text-muted-foreground">({count('awaiting_payment')} awaiting payment, {count('paid')} ready to ship, {count('shipped')} to mark delivered)</span>
           </div>
           <Button size="lg" variant="outline" onClick={() => setFilter('action')}>Show them</Button>
         </div>
