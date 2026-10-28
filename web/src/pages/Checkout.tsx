@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Loader2, MapPin, Package, ShoppingBag, CreditCard } from 'lucide-react'
+import { Loader2, MapPin, Package, ShoppingBag } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { money, orderRef } from '@/lib/format'
@@ -25,26 +25,7 @@ export default function Checkout() {
   const [addr, setAddr] = useState<Address>(empty)
   const [placing, setPlacing] = useState(false)
   const [order, setOrder] = useState<Order | null>(null)
-  const [paying, setPaying] = useState(false)
-
-  const payNow = async (o: Order) => {
-    if (!session?.access_token) { toast.error('Please sign in to pay.'); return }
-    setPaying(true)
-    try {
-      const r = await fetch('/api/xpay-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ order_id: o.id }),
-      })
-      const data = await r.json().catch(() => ({}))
-      if (!r.ok || !data?.payment_url) throw new Error(data?.error || 'Could not start payment')
-      window.location.href = data.payment_url
-    } catch (e: any) {
-      toast.error(e?.message || 'Could not start payment')
-    } finally {
-      setPaying(false)
-    }
-  }
+  const [ticketId, setTicketId] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -82,7 +63,37 @@ export default function Checkout() {
       return void toast.error(error.message)
     }
     const { data: row } = await supabase.from('orders').select('*').eq('id', data as string).single()
-    setOrder(row as Order)
+    const o = row as Order
+    setOrder(o)
+
+    // Raise a support ticket so the team can contact the customer about this order.
+    const contact = session?.user?.email || addr.phone
+    const question = [
+      `Order request`,
+      `Product: ${product.name}`,
+      `Quantity: ${qty}`,
+      `Total: ${money(Number(o.total))}`,
+      `Order ref: #${orderRef(o.id)}`,
+      ``,
+      `Delivery address:`,
+      `${addr.name}, ${addr.phone}`,
+      `${addr.line1}${addr.line2 ? ', ' + addr.line2 : ''}`,
+      `${addr.city}, ${addr.state} ${addr.pincode}`,
+      ``,
+      `Please contact me to confirm the order and arrange payment/delivery.`,
+    ].join('\n').slice(0, 2000)
+    const { data: tid, error: terr } = await supabase.rpc('create_support_request', {
+      p_contact: contact,
+      p_question: question,
+      p_reason: 'Order placed - team to contact customer',
+      p_transcript: [],
+    })
+    if (terr) {
+      toast.error('Order placed, but could not open a support ticket: ' + terr.message)
+    } else {
+      setTicketId(tid as string)
+      toast.success('Order placed. A support ticket has been opened for you.')
+    }
     setPlacing(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -101,9 +112,9 @@ export default function Checkout() {
   const step = !order ? 1 : 2
 
   return (
-    <Page title="Checkout" description="Delivery address, then payment with GPay. We ship once your payment is confirmed.">
+    <Page title="Checkout" description="Delivery address. Our team will contact you through a support ticket to confirm and arrange payment and delivery.">
       <ol className="flex gap-2 text-sm" aria-label="Checkout steps">
-        {['Delivery address', 'Payment', 'Done'].map((s, i) => (
+        {['Delivery address', 'Order placed'].map((s, i) => (
           <li key={s} className={`flex-1 rounded-lg border px-3 py-2 text-center ${step === i + 1 ? 'border-primary bg-primary/10 font-medium' : step > i + 1 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
             {i + 1}. {s}
           </li>
@@ -127,7 +138,7 @@ export default function Checkout() {
                   <div className="sm:col-span-2">
                     <Button type="submit" size="lg" className="w-full" disabled={placing || soldOut}>
                       {placing ? <Loader2 className="size-4 animate-spin" /> : <ShoppingBag className="size-4" />}
-                      {soldOut ? 'Out of stock' : 'Place order and continue to payment'}
+                      {soldOut ? 'Out of stock' : 'Place order and open support ticket'}
                     </Button>
                   </div>
                 </form>
@@ -137,14 +148,22 @@ export default function Checkout() {
 
           {step === 2 && order && (
             <Card>
-              <CardHeader><CardTitle className="text-base">Pay {money(order.total)} with GPay (order #{orderRef(order.id)})</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">Order placed #{orderRef(order.id)}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">Your order is placed and the item is reserved for you. Click below to pay securely. We ship it after the payment is confirmed.</p>
-                <Button size="lg" className="w-full" disabled={paying} onClick={() => payNow(order)}>
-                  {paying && <Loader2 className="size-4 animate-spin" />}
-                  <CreditCard className="size-4" /> Pay now
-                </Button>
-                <p className="text-xs text-muted-foreground">You can also pay later from <Link className="underline" to="/orders">My orders</Link>.</p>
+                <p className="text-sm text-muted-foreground">Your order is placed and the item is reserved for you. Our team will contact you to confirm payment and delivery.</p>
+                {ticketId && (
+                  <div className="rounded-lg bg-emerald-500/10 p-3 text-sm">
+                    <p className="font-medium">Support ticket opened: #{String(ticketId).slice(0, 8).toUpperCase()}</p>
+                    <p className="text-xs text-muted-foreground">Track and reply to the team on your Support page. We will also contact you at {session?.user?.email || addr.phone}.</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button asChild size="lg" variant="outline"><Link to="/tickets">View my tickets</Link></Button>
+                      <Button asChild size="lg" variant="outline"><Link to="/orders">View my orders</Link></Button>
+                    </div>
+                  </div>
+                )}
+                {!ticketId && (
+                  <p className="text-sm text-amber-600">We could not open a support ticket automatically. Please open one from the Support page and mention order #{orderRef(order.id)}.</p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -166,7 +185,7 @@ export default function Checkout() {
                 onChange={(e) => setQty(Math.min(Math.max(Number.parseInt(e.target.value, 10) || 1, 1), Math.max(1, Math.min(product.stock, 50))))} />
             </div>
             <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>Total</span><span>{money(order ? Number(order.total) : total)}</span></div>
-            <p className="text-xs text-muted-foreground">Payment by GPay / UPI. Delivery charges, if any, are confirmed by our team.</p>
+            <p className="text-xs text-muted-foreground">Our team will contact you via support ticket to confirm payment and delivery.</p>
           </CardContent>
         </Card>
       </div>

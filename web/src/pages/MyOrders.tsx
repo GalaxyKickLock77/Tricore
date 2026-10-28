@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CreditCard, ExternalLink, Loader2, MapPin, ReceiptText, Truck } from 'lucide-react'
+import { ExternalLink, MapPin, ReceiptText, Truck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/auth'
 import { money, orderRef, shortDate } from '@/lib/format'
 import type { Order, OrderEvent } from '@/lib/types'
 import { EmptyState, Page } from '@/components/Page'
@@ -14,11 +13,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function MyOrders() {
-  const { session } = useAuth()
   const [orders, setOrders] = useState<Order[]>([])
   const [events, setEvents] = useState<OrderEvent[]>([])
   const [loading, setLoading] = useState(true)
-  const [paying, setPaying] = useState<string | null>(null)
 
   const load = async () => {
     const [o, e] = await Promise.all([
@@ -39,25 +36,6 @@ export default function MyOrders() {
     for (const ev of events) map.set(ev.order_id, [...(map.get(ev.order_id) ?? []), ev])
     return map
   }, [events])
-
-  const payNow = async (id: string) => {
-    if (!session?.access_token) { toast.error('Please sign in to pay.'); return }
-    setPaying(id)
-    try {
-      const r = await fetch('/api/xpay-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ order_id: id }),
-      })
-      const data = await r.json().catch(() => ({}))
-      if (!r.ok || !data?.payment_url) throw new Error(data?.error || 'Could not start payment')
-      window.location.href = data.payment_url
-    } catch (e: any) {
-      toast.error(e?.message || 'Could not start payment')
-    } finally {
-      setPaying(null)
-    }
-  }
 
   const cancel = async (id: string) => {
     if (!confirm('Cancel this order?')) return
@@ -110,26 +88,12 @@ export default function MyOrders() {
                 )}
 
                 {o.status === 'awaiting_payment' && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="lg" disabled={paying === o.id} onClick={() => payNow(o.id)}>
-                      {paying === o.id && <Loader2 className="size-4 animate-spin" />}
-                      <CreditCard className="size-4" /> Pay {money(o.total)} now
-                    </Button>
-                    <Button size="lg" variant="outline" disabled={paying === o.id} onClick={async () => {
-                      if (!session?.access_token) { toast.error('Please sign in.'); return }
-                      setPaying(o.id)
-                      try {
-                        const r = await fetch('/api/xpay-status', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ order_id: o.id }) })
-                        const data = await r.json().catch(() => ({}))
-                        if (data?.status === 'paid') { toast.success('Payment confirmed!'); load() }
-                        else toast.info(`Still pending (${data?.xpay ?? 'pending'}). Wait a minute and try again.`)
-                      } catch { toast.error('Could not check status') }
-                      finally { setPaying(null) }
-                    }}>
-                      {paying === o.id && <Loader2 className="size-4 animate-spin" />}
-                      Refresh payment status
-                    </Button>
-                    <Button size="lg" variant="outline" onClick={() => cancel(o.id)}>Cancel order</Button>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">Our team will contact you through your support ticket to confirm payment and delivery. You can also message them on the Support page.</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="lg" variant="outline" asChild><Link to="/tickets">Open support tickets</Link></Button>
+                      <Button size="lg" variant="outline" onClick={() => cancel(o.id)}>Cancel order</Button>
+                    </div>
                   </div>
                 )}
                 {o.status === 'payment_submitted' && (
