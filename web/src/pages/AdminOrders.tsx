@@ -58,8 +58,12 @@ export default function AdminOrders() {
     load()
     // refresh when orders change (new order, payment submitted…)
     const ch = supabase.channel('admin-orders-page').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load()).subscribe()
+    const onFocus = () => load()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) load() })
     return () => {
       supabase.removeChannel(ch)
+      window.removeEventListener('focus', onFocus)
     }
   }, [])
 
@@ -149,6 +153,7 @@ export default function AdminOrders() {
         {FILTERS.map((f) => (
           <Button key={f.key} size="lg" variant={filter === f.key ? 'default' : 'outline'} onClick={() => setFilter(f.key)}>{f.label}</Button>
         ))}
+        <Button size="lg" variant="outline" onClick={() => load()}>Refresh</Button>
         <Button size="lg" variant="outline" asChild><a href="/admin/support">Support tickets</a></Button>
       </div>
 
