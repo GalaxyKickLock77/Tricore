@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { BadgeIndianRupee, CheckCircle2, Clock, Loader2, MapPin, PackageCheck, ReceiptText, ShieldCheck, Truck } from 'lucide-react'
+import { BadgeIndianRupee, CheckCircle2, Clock, Loader2, MapPin, PackageCheck, ReceiptText, Truck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { money, orderRef, shortDate } from '@/lib/format'
 import type { Order, OrderEvent, OrderStatus } from '@/lib/types'
@@ -17,7 +17,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 type Filter = 'action' | 'all' | OrderStatus
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'action', label: 'Needs action' },
-  { key: 'payment_submitted', label: 'Verify payment' },
   { key: 'paid', label: 'Ready to ship' },
   { key: 'awaiting_payment', label: 'Awaiting payment' },
   { key: 'shipped', label: 'Shipped' },
@@ -28,7 +27,6 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 type Dlg =
   | { kind: 'ship'; order: Order }
-  | { kind: 'reject'; order: Order }
   | { kind: 'cancel'; order: Order }
   | null
 
@@ -73,13 +71,13 @@ export default function AdminOrders() {
 
   const count = (s: OrderStatus) => orders.filter((o) => o.status === s).length
   const stats = [
-    { label: 'Verify payment', value: String(count('payment_submitted')), icon: Clock },
+    { label: 'Awaiting payment', value: String(count('awaiting_payment')), icon: Clock },
     { label: 'Ready to ship', value: String(count('paid')), icon: PackageCheck },
     { label: 'Shipped', value: String(count('shipped')), icon: Truck },
     { label: 'Money received', value: money(orders.filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + Number(o.total), 0)), icon: BadgeIndianRupee },
   ]
 
-  const shown = orders.filter((o) => filter === 'all' || (filter === 'action' ? o.status === 'payment_submitted' || o.status === 'paid' : o.status === filter))
+  const shown = orders.filter((o) => filter === 'all' || (filter === 'action' ? o.status === 'awaiting_payment' || o.status === 'paid' : o.status === filter))
 
   const run = async (fn: string, args: Record<string, unknown>, ok: string) => {
     setBusy(true)
@@ -99,12 +97,11 @@ export default function AdminOrders() {
     e.preventDefault()
     if (!dlg) return
     if (dlg.kind === 'ship') void run('admin_ship_order', { p_order: dlg.order.id, p_courier: courier, p_tracking: tracking, p_url: url || null }, 'Order marked as shipped')
-    if (dlg.kind === 'reject') void run('admin_reject_payment', { p_order: dlg.order.id, p_note: reason }, 'Customer asked to check the payment')
     if (dlg.kind === 'cancel') void run('admin_cancel_order', { p_order: dlg.order.id, p_reason: reason }, 'Order cancelled and stock restored')
   }
 
   return (
-    <Page title="Orders" description="Verify payments in your bank, ship paid orders and keep customers updated.">
+    <Page title="Orders" description="Confirm payments after contacting the customer, ship paid orders and keep customers updated.">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map(({ label, value, icon: Icon }) => (
           <Card key={label}>
@@ -157,12 +154,6 @@ export default function AdminOrders() {
                 </details>
 
                 <div className="flex flex-wrap gap-2">
-                  {o.status === 'payment_submitted' && (
-                    <>
-                      <Button size="lg" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed')}><ShieldCheck className="size-4" />Confirm payment received</Button>
-                      <Button size="lg" variant="outline" onClick={() => setDlg({ kind: 'reject', order: o })}>Payment not received</Button>
-                    </>
-                  )}
                   {o.status === 'awaiting_payment' && (
                     <Button size="lg" variant="outline" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed')}>Mark as paid (received in bank)</Button>
                   )}
@@ -172,7 +163,7 @@ export default function AdminOrders() {
                   {o.status === 'shipped' && (
                     <Button size="lg" onClick={() => run('admin_mark_delivered', { p_order: o.id }, 'Marked as delivered')}><CheckCircle2 className="size-4" />Mark delivered</Button>
                   )}
-                  {['awaiting_payment', 'payment_submitted', 'paid'].includes(o.status) && (
+                  {['awaiting_payment', 'paid'].includes(o.status) && (
                     <Button size="lg" variant="ghost" className="text-destructive" onClick={() => setDlg({ kind: 'cancel', order: o })}>Cancel order</Button>
                   )}
                 </div>
@@ -186,10 +177,9 @@ export default function AdminOrders() {
         <DialogContent>
           <form onSubmit={submitDialog} className="space-y-4">
             <DialogHeader>
-              <DialogTitle>{dlg?.kind === 'ship' ? 'Ship this order' : dlg?.kind === 'reject' ? 'Payment not received' : 'Cancel this order'}</DialogTitle>
+              <DialogTitle>{dlg?.kind === 'ship' ? 'Ship this order' : 'Cancel this order'}</DialogTitle>
               <DialogDescription>
                 {dlg?.kind === 'ship' && 'The customer sees the courier and tracking details on My orders.'}
-                {dlg?.kind === 'reject' && 'The customer is asked to check the payment and send the correct transaction ID.'}
                 {dlg?.kind === 'cancel' && 'The stock is returned. If the customer already paid, refund them yourself.'}
               </DialogDescription>
             </DialogHeader>
@@ -202,14 +192,14 @@ export default function AdminOrders() {
             ) : (
               <div className="space-y-1.5">
                 <Label htmlFor="reason">Reason (shown to the customer)</Label>
-                <Input id="reason" required minLength={3} maxLength={300} placeholder={dlg?.kind === 'reject' ? 'For example: amount not received in bank' : 'For example: customer asked to cancel'} value={reason} onChange={(e) => setReason(e.target.value)} />
+                <Input id="reason" required minLength={3} maxLength={300} placeholder="For example: customer asked to cancel" value={reason} onChange={(e) => setReason(e.target.value)} />
               </div>
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDlg(null)}>Back</Button>
               <Button type="submit" disabled={busy} variant={dlg?.kind === 'cancel' ? 'destructive' : 'default'}>
                 {busy && <Loader2 className="size-4 animate-spin" />}
-                {dlg?.kind === 'ship' ? 'Mark as shipped' : dlg?.kind === 'reject' ? 'Send to customer' : 'Cancel order'}
+                {dlg?.kind === 'ship' ? 'Mark as shipped' : 'Cancel order'}
               </Button>
             </DialogFooter>
           </form>
