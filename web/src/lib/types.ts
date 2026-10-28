@@ -88,6 +88,7 @@ export interface Ticket {
   ai_category: string | null
   ai_priority: 'low' | 'normal' | 'high' | 'urgent' | null
   customer_last_seen: string | null
+  profiles?: { full_name: string | null; email: string | null } | null
 }
 
 export interface TicketComment {

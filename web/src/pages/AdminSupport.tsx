@@ -47,7 +47,7 @@ export default function AdminSupport() {
 
   const load = async () => {
     const [t, c] = await Promise.all([
-      supabase.from('support_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('support_requests').select('*, profiles(full_name, email)').order('created_at', { ascending: false }),
       supabase.from('ticket_comments').select('*').order('created_at', { ascending: true }),
     ])
     if (t.error) toast.error(t.error.message)
@@ -179,6 +179,7 @@ export default function AdminSupport() {
                       <span className="font-mono text-xs text-muted-foreground">#{ref}</span>
                       <span className="font-medium">{t.contact}</span>
                       <span className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</span>
+                      <span className="text-xs font-medium text-primary">{t.profiles?.full_name ?? 'Unknown customer'} · {t.contact}</span>
                       {!t.user_id && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">visitor (not signed in)</span>}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">

@@ -29,7 +29,7 @@ export default function MyTickets() {
 
   const load = async () => {
     const [t, c] = await Promise.all([
-      supabase.from('support_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('support_requests').select('*, profiles(full_name, email)').order('created_at', { ascending: false }),
       supabase.from('ticket_comments').select('*').order('created_at', { ascending: true }),
     ])
     if (t.error) toast.error(t.error.message)
