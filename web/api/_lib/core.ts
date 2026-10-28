@@ -517,7 +517,7 @@ const ORDER_ABOUT_EXISTING_RE = /\bmy orders?\b|\b(cancel|track|status|refund|re
 
 export function routeOrder(messages: ChatMessage[], context: ChatContext, focus: Focus): BotReply | null {
   const last = messages[messages.length - 1]?.content ?? ''
-  const p = focus.product
+  const p = focus.product ?? matchProduct(last, context.products)
   if (!p) {
     // "I want to order something" / "order one": ask which product, with a few real options
     if (ORDER_RE.test(last) && !QUESTIONY_RE.test(last) && !ORDER_ABOUT_EXISTING_RE.test(last) && !wantsLowerPrice(last) && context.products.length > 0) {
@@ -532,7 +532,7 @@ export function routeOrder(messages: ChatMessage[], context: ChatContext, focus:
   const confirmedOffer = OFFERED_ORDER_RE.test(prev) && YES_RE.test(last)
   const imperative = ORDER_RE.test(last) && !QUESTIONY_RE.test(last)
   if (!confirmedOffer && !imperative) return null
-  if (!confirmedOffer && !(focus.explicit || PRONOUN_RE.test(last))) return null
+  if (!confirmedOffer && !(focus.explicit || matchProduct(last, context.products) || PRONOUN_RE.test(last))) return null
   if (/out of stock/i.test(p.availability)) return { ...reply('answer', outOfStockReply(p, context.products, false), 'question'), sources: src(p) }
   const quantity = confirmedOffer ? 1 : parseQuantity(last, p)
   const total = Number(p.price_usd) * quantity
