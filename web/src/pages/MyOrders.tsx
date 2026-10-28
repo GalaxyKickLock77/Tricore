@@ -89,7 +89,7 @@ export default function MyOrders() {
                   <StatusBadge status={o.status} />
                 </div>
 
-                <OrderTimeline status={o.status} events={byOrder.get(o.id) ?? []} />
+                <OrderTimeline status={o.status} events={byOrder.get(o.id) ?? []} showEvents={!ticketByOrder.has(o.id)} />
 
                 {o.payment_note && o.status === 'awaiting_payment' && (
                   <p role="alert" className="rounded-lg bg-red-500/10 p-2 text-sm text-red-700 dark:text-red-400">We could not verify your payment: {o.payment_note}</p>

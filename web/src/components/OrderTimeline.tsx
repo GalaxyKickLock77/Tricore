@@ -20,7 +20,7 @@ const INDEX: Record<Exclude<OrderStatus, 'cancelled'>, number> = {
 }
 
 /** Where the order is right now (stepper) plus the full history underneath. */
-export default function OrderTimeline({ status, events }: { status: OrderStatus; events: OrderEvent[] }) {
+export default function OrderTimeline({ status, events, showEvents = true }: { status: OrderStatus; events: OrderEvent[]; showEvents?: boolean }) {
   const cancelled = status === 'cancelled'
   const current = cancelled ? -1 : INDEX[status]
 
@@ -55,7 +55,7 @@ export default function OrderTimeline({ status, events }: { status: OrderStatus;
         </ol>
       )}
 
-      {events.length > 0 && (
+      {showEvents && events.length > 0 && (
         <ul className="space-y-1.5 border-l pl-4 text-sm">
           {events.map((e) => (
             <li key={e.id} className="relative">

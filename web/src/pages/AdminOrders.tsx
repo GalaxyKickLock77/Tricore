@@ -80,7 +80,7 @@ export default function AdminOrders() {
   const actionOrders = orders.filter((o) => o.status === 'awaiting_payment' || o.status === 'paid' || o.status === 'shipped')
   const shown = orders.filter((o) => filter === 'all' || (filter === 'action' ? o.status === 'awaiting_payment' || o.status === 'paid' || o.status === 'shipped' : o.status === filter))
 
-  const syncTicket = async (orderId: string, message: string, status?: 'open' | 'in_progress' | 'resolved') => {
+  const syncTicket = async (orderId: string, message: string | undefined, status?: 'open' | 'in_progress' | 'resolved') => {
     const ref = orderRef(orderId)
     const { data: ticket } = await supabase
       .from('support_requests')
@@ -90,13 +90,15 @@ export default function AdminOrders() {
       .limit(1)
       .maybeSingle()
     if (!ticket?.id) return
-    await supabase.rpc('add_ticket_comment', { p_ticket: ticket.id, p_body: message, p_internal: false })
+    if (message) {
+      await supabase.rpc('add_ticket_comment', { p_ticket: ticket.id, p_body: message, p_internal: false })
+    }
     if (status && status !== ticket.status) {
       await supabase.from('support_requests').update({ status }).eq('id', ticket.id)
     }
   }
 
-  const run = async (fn: string, args: Record<string, unknown>, ok: string, sync?: { message: string; status?: 'open' | 'in_progress' | 'resolved' }) => {
+  const run = async (fn: string, args: Record<string, unknown>, ok: string, sync?: { message?: string; status?: 'open' | 'in_progress' | 'resolved' }) => {
     setBusy(true)
     const { error } = await supabase.rpc(fn, args)
     setBusy(false)
@@ -116,7 +118,7 @@ export default function AdminOrders() {
   const submitDialog = (e: FormEvent) => {
     e.preventDefault()
     if (!dlg) return
-    if (dlg.kind === 'ship') void run('admin_ship_order', { p_order: dlg.order.id, p_courier: courier, p_tracking: tracking, p_url: url || null }, 'Order marked as shipped', { message: `Your order has been shipped via ${courier}. Tracking number: ${tracking}${url ? ' (' + url + ')' : ''}.`, status: 'in_progress' })
+    if (dlg.kind === 'ship') void run('admin_ship_order', { p_order: dlg.order.id, p_courier: courier, p_tracking: tracking, p_url: url || null }, 'Order marked as shipped', { status: 'in_progress' })
     if (dlg.kind === 'cancel') void run('admin_cancel_order', { p_order: dlg.order.id, p_reason: reason }, 'Order cancelled and stock restored', { message: `Order cancelled: ${reason}`, status: 'resolved' })
   }
 
@@ -186,13 +188,13 @@ export default function AdminOrders() {
 
                 <div className="flex flex-wrap gap-2">
                   {o.status === 'awaiting_payment' && (
-                    <Button size="lg" variant="outline" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed', { message: 'Payment confirmed by our team. Your order is now being prepared for shipping.', status: 'in_progress' })}>Mark as paid (after contact)</Button>
+                    <Button size="lg" variant="outline" onClick={() => run('admin_confirm_payment', { p_order: o.id }, 'Payment confirmed', { status: 'in_progress' })}>Mark as paid (after contact)</Button>
                   )}
                   {o.status === 'paid' && (
                     <Button size="lg" onClick={() => setDlg({ kind: 'ship', order: o })}><Truck className="size-4" />Ship order</Button>
                   )}
                   {o.status === 'shipped' && (
-                    <Button size="lg" onClick={() => run('admin_mark_delivered', { p_order: o.id }, 'Marked as delivered', { message: 'Your order has been delivered. Thank you for shopping with us!', status: 'resolved' })}><CheckCircle2 className="size-4" />Mark delivered</Button>
+                    <Button size="lg" onClick={() => run('admin_mark_delivered', { p_order: o.id }, 'Marked as delivered', { status: 'resolved' })}><CheckCircle2 className="size-4" />Mark delivered</Button>
                   )}
                   {['awaiting_payment', 'paid'].includes(o.status) && (
                     <Button size="lg" variant="ghost" className="text-destructive" onClick={() => setDlg({ kind: 'cancel', order: o })}>Cancel order</Button>
