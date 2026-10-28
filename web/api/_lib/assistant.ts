@@ -28,7 +28,7 @@ interface ModelResult {
 
 // Assistant-only model order: cheapest first (greenference gpt-oss-20b), then groq gpt-oss-120b for quality.
 const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'recursive/flint-v1.0', extra: {} },
+  { id: 'nvidia/nemotron-3.5-super-vl-120b-a12b', extra: {} },
 ]
 
 const UNAVAILABLE = "I'm having trouble reaching the assistant right now. Would you like me to connect you with my team?"
@@ -91,7 +91,7 @@ async function requestOnce(
         // Keep the tools list even when tools are disabled: without it gpt-oss emits a fake "json" tool call and Groq returns 400.
         tools: ASSISTANT_TOOLS,
         tool_choice: forceTool
-          ? { type: 'function', function: { name: forceTool } }
+          ? 'required'
           : allowTools ? 'auto' : 'none',
         parallel_tool_calls: true,
         temperature: 0.2,
