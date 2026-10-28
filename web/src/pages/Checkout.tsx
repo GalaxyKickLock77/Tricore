@@ -26,6 +26,7 @@ export default function Checkout() {
   const [placing, setPlacing] = useState(false)
   const [order, setOrder] = useState<Order | null>(null)
   const [ticketId, setTicketId] = useState<string | null>(null)
+  const [ticketError, setTicketError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -89,9 +90,11 @@ export default function Checkout() {
       p_transcript: [],
     })
     if (terr) {
+      setTicketError(terr.message)
       toast.error('Order placed, but could not open a support ticket: ' + terr.message)
     } else {
       setTicketId(tid as string)
+      setTicketError(null)
       toast.success('Order placed. A support ticket has been opened for you.')
     }
     setPlacing(false)
@@ -162,7 +165,39 @@ export default function Checkout() {
                   </div>
                 )}
                 {!ticketId && (
-                  <p className="text-sm text-amber-600">We could not open a support ticket automatically. Please open one from the Support page and mention order #{orderRef(order.id)}.</p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-amber-600">
+                      We could not open a support ticket automatically{ticketError ? `: ${ticketError}` : ''}. Please open one from the Support page and mention order #{orderRef(order.id)}.
+                    </p>
+                    {order && (
+                      <Button size="lg" variant="outline" onClick={async () => {
+                        setTicketError(null)
+                        const contact = session?.user?.email || addr.phone
+                        const question = [
+                          `Order request`,
+                          `Product: ${product?.name ?? ''}`,
+                          `Quantity: ${qty}`,
+                          `Total: ${money(Number(order.total))}`,
+                          `Order ref: #${orderRef(order.id)}`,
+                          ``,
+                          `Delivery address:`,
+                          `${addr.name}, ${addr.phone}`,
+                          `${addr.line1}${addr.line2 ? ', ' + addr.line2 : ''}`,
+                          `${addr.city}, ${addr.state} ${addr.pincode}`,
+                          ``,
+                          `Please contact me to confirm the order and arrange payment/delivery.`,
+                        ].join('\n').slice(0, 2000)
+                        const { data: tid, error: terr } = await supabase.rpc('create_support_request', {
+                          p_contact: contact,
+                          p_question: question,
+                          p_reason: 'Order placed - team to contact customer',
+                          p_transcript: [],
+                        })
+                        if (terr) { setTicketError(terr.message); toast.error(terr.message) }
+                        else { setTicketId(tid as string); toast.success('Support ticket opened.') }
+                      }}>Retry opening ticket</Button>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
