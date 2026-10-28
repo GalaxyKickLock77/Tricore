@@ -28,6 +28,7 @@ export default function AdminProducts() {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toDelete, setToDelete] = useState<Product | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   const load = async () => {
     const [{ data, error }, { data: orders }] = await Promise.all([
@@ -65,7 +66,24 @@ export default function AdminProducts() {
     setOpen(true)
   }
 
+  const uploadImage = async (file: File) => {
+    setUploadingImage(true)
+    try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const { error } = await supabase.storage.from('product-images').upload(path, file, { upsert: false })
+      if (error) throw error
+      const { data } = supabase.storage.from('product-images').getPublicUrl(path)
+      setForm((f) => ({ ...f, image_url: data.publicUrl }))
+      toast.success('Image uploaded')
+    } catch (e: any) {
+      toast.error(e?.message || 'Image upload failed')
+    } finally {
+      setUploadingImage(false)
+    }
+  }
   const save = async (e: FormEvent) => {
+
     e.preventDefault()
     setSaving(true)
     const payload = {
@@ -196,8 +214,15 @@ export default function AdminProducts() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="p-image">Image URL (optional)</Label>
-              <Input id="p-image" type="url" placeholder="https://…" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} />
+              <Label htmlFor="p-image">Image (optional)</Label>
+              <div className="flex items-center gap-3">
+                {form.image_url && <img src={form.image_url} alt="" className="size-16 rounded object-cover" />}
+                <div className="flex-1 space-y-2">
+                  <Input id="p-image" type="url" placeholder="https://… or upload below" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} />
+                  <Input type="file" accept="image/*" disabled={uploadingImage} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f) }} />
+                  {uploadingImage && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                </div>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="p-desc">Description</Label>
