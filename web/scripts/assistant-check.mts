@@ -105,6 +105,28 @@ await check('bare checkout produces a safe product-selection button', async () =
   expect(!reply.order, 'bare checkout must not invent a product')
 })
 
+await check('a product question after a ticket-count turn searches products, not tickets', async () => {
+  const h = harness({
+    token: 'customer-token',
+    model: [
+      toolResponse([{ name: 'search_store', args: { query: 'products Tricore sells' } }]),
+      finalResponse('We sell Tricore Test Laptop.', [`product:${PRODUCT_ID}`]),
+    ],
+  })
+  const reply = await runAssistant({
+    messages: [
+      { role: 'user', content: 'How many tickets are open?' },
+      { role: 'assistant', content: 'I\'m having trouble reaching the assistant right now.' },
+      { role: 'user', content: 'What do you sell?' },
+    ],
+    apiKey: 'test', runtime: h.runtime,
+  })
+  const request = h.requests.find((item) => item.url === 'https://api.groq.com/openai/v1/chat/completions')
+  const body = JSON.parse(String(request?.init?.body))
+  expect(body.tool_choice?.function?.name === 'search_store', `latest product question did not force search_store: ${JSON.stringify(body.tool_choice)}`)
+  expect(reply.answer === 'We sell Tricore Test Laptop.', `product question got a stale answer: ${reply.answer}`)
+})
+
 await check('pending support count uses exact live aggregates and adds support navigation', async () => {
   const h = harness({
     token: 'admin-token',
@@ -127,6 +149,9 @@ await check('pending support count uses exact live aggregates and adds support n
   const accountRequest = h.requests.find((r) => r.url.endsWith('/rpc/chat_account_context'))
   const headers = accountRequest?.init?.headers as Record<string, string>
   expect(headers.Authorization === 'Bearer admin-token', 'private data must use the user token, not a service key')
+  const modelRequest = h.requests.find((r) => r.url === 'https://api.groq.com/openai/v1/chat/completions')
+  const modelBody = JSON.parse(String(modelRequest?.init?.body))
+  expect(modelBody.tool_choice?.function?.name === 'read_account', 'ticket counts must force the live account tool')
 })
 
 await check('signed-out account questions require sign-in and never query private data', async () => {

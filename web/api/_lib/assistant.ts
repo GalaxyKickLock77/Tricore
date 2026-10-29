@@ -101,7 +101,11 @@ async function requestOnce(
         messages,
         // Keep the tools list even when tools are disabled: without it gpt-oss emits a fake "json" tool call and Groq returns 400.
         tools: ASSISTANT_TOOLS,
-        tool_choice: allowTools ? 'required' : 'none',
+        tool_choice: allowTools
+          ? forceTool
+            ? { type: 'function', function: { name: forceTool } }
+            : 'required'
+          : 'none',
         parallel_tool_calls: true,
         temperature: 0.2,
         max_completion_tokens: 2000,
@@ -168,6 +172,14 @@ function parseArgs(raw: string): unknown {
   try { return JSON.parse(raw) } catch { return {} }
 }
 
+function requiredToolForQuestion(question: string, signedIn: boolean): string | undefined {
+  if (!signedIn && /\b(check ?out|buy|purchase|orders?|tickets?|account)\b/i.test(question)) return 'show_page'
+  const asksForLiveFigures = /\b(how many|how much|number of|count|are there|what(?:'s| is) the status|recent|this week|this month)\b/i.test(question)
+  if (asksForLiveFigures && /\b(tickets?|support requests?|orders?|products?|stock)\b/i.test(question)) return 'read_account'
+  if (/\b(products?|sell|catalog|catalogue|price|cost|available)\b/i.test(question)) return 'search_store'
+  return undefined
+}
+
 function withFallback(memory: string[] | undefined, answer: string, reason: string): AssistantReply {
   return { ...offer(answer, reason), memory }
 }
@@ -195,9 +207,9 @@ export async function runAssistant(opts: {
   // Two tool rounds followed by a final structured answer. A normal request uses two model calls.
   // Signed-out buy/checkout requests must always get the sign-in button, so the first round is forced to call show_page.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
-  const forceSignIn = !runtime.token && /\b(check ?out|buy|purchase|orders?|tickets?|account)\b/i.test(lastUser)
+  const requiredTool = requiredToolForQuestion(lastUser, !!runtime.token)
   for (let round = 0; round < 3; round++) {
-    const forced = round === 0 && forceSignIn ? 'show_page' : undefined
+    const forced = round === 0 ? requiredTool : undefined
     const result = await callModel(apiKey, conversation, runtime.fetchImpl, round < 2, forced)
     sawRateLimit ||= result.rateLimited
     if (!result.message) return withFallback(memory, sawRateLimit ? UNAVAILABLE : UNSURE, sawRateLimit ? 'model rate limited' : 'model unavailable')
