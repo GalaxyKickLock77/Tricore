@@ -179,8 +179,10 @@ function parseArgs(raw: string): unknown {
   try { return JSON.parse(raw) } catch { return {} }
 }
 
-function requiredToolArgs(question: string, tool: string): Record<string, unknown> {
-  if (tool === 'show_page') return { page: '/login', label: 'Sign in to continue' }
+function requiredToolArgs(question: string, tool: string, signedIn = false): Record<string, unknown> {
+  if (tool === 'show_page') return signedIn
+    ? { page: '/shop', label: 'Choose a product' }
+    : { page: '/login', label: 'Sign in to continue' }
   if (tool === 'search_store') return { query: question.slice(-400) }
   if (tool === 'read_account') {
     const resource = /\b(tickets?|support requests?|support cases?)\b/i.test(question)
@@ -200,6 +202,9 @@ function requiredToolForQuestion(question: string, signedIn: boolean): string | 
   const asksAboutProducts = /\b(products?|sell|catalog|catalogue|price|cost|available|stock|items?|carry|recommend|compare|specs?)\b/i.test(question) ||
     /\bdo you (have|sell|carry|stock|offer)\b/i.test(question)
   if (!signedIn && (needsAccount || asksAboutProducts)) return 'show_page'
+  if (signedIn && /\bcheckout\b\s*[.!?]*$/i.test(question)) return 'show_page'
+  const asksAboutExistingOrder = /\b(my order|order status|track|tracking|cancel|refund|where is my order|latest order|recent order)\b/i.test(question)
+  if (/\b(buy|purchase|order|checkout)\b/i.test(question) && !asksAboutExistingOrder) return 'search_store'
   if (/\b(tickets?|support requests?|support cases?)\b/i.test(question)) return 'read_account'
   const asksForLiveFigures = /\b(how many|how much|number of|count|are there|what(?:'s| is) the status|recent|this week|this month)\b/i.test(question)
   if (asksForLiveFigures && /\b(tickets?|support requests?|orders?|products?|stock)\b/i.test(question)) return 'read_account'
@@ -249,12 +254,13 @@ export async function runAssistant(opts: {
     let result = await callModel(apiKey, conversation, runtime.fetchImpl, round < 2, forced)
     const calledRequiredTool = result.message && toolCalls(result.message).some((call) => call.function.name === requiredTool)
     if (round === 0 && requiredTool && !calledRequiredTool) {
+      const args = requiredToolArgs(lastUser, requiredTool, !!runtime.token)
       const call: AssistantToolCall = {
         id: 'server-tool-recovery',
         type: 'function',
-        function: { name: requiredTool, arguments: JSON.stringify(requiredToolArgs(lastUser, requiredTool)) },
+        function: { name: requiredTool, arguments: JSON.stringify(args) },
       }
-      const content = await executeAssistantTool(call.function.name, parseArgs(call.function.arguments), runtime, state)
+      const content = await executeAssistantTool(call.function.name, args, runtime, state)
       conversation.push(
         { role: 'assistant', content: null, tool_calls: [call] },
         { role: 'tool', tool_call_id: call.id, content },

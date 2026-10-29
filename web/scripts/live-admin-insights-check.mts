@@ -75,7 +75,7 @@ try {
 
   const { POST } = await import('../api/chat.ts')
   let ipCounter = 0
-  const ask = async (question: string, withToken = true) => {
+  const ask = async (question: string, withToken = true, history: { role: 'user' | 'assistant'; content: string }[] = []) => {
     await new Promise((r) => setTimeout(r, 4000)) // Pace provider requests
     const res = await POST(new Request('http://localhost/api/chat', {
       method: 'POST',
@@ -84,7 +84,7 @@ try {
         'x-forwarded-for': `10.31.0.${++ipCounter}`,
         ...(withToken && token ? { authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ messages: [{ role: 'user', content: question }], page: '/admin/support' }),
+      body: JSON.stringify({ messages: [...history, { role: 'user', content: question }], page: '/admin/support' }),
     }))
     return (await res.json()) as Record<string, any>
   }
@@ -130,6 +130,17 @@ try {
           ? `answer did not name any live catalog item: ${products.answer}`
           : null,
     `A: ${String(products.answer).replace(/\s+/g, ' ')}`)
+
+  const order = await ask('order Sample Gadget', true, [
+    { role: 'user', content: 'What do you sell?' },
+    { role: 'assistant', content: String(products.answer) },
+  ])
+  report('product order request produces a validated checkout proposal',
+    order.action !== 'confirm_order' ? `action=${order.action}: ${order.answer}`
+      : !order.order?.product_id || !/sample gadget/i.test(String(order.order?.name))
+        ? `invalid checkout proposal: ${JSON.stringify(order.order)}`
+        : null,
+    `A: ${String(order.answer).replace(/\s+/g, ' ')}`)
 
   // 2. A catalogue figure the assistant had never been able to see before.
   const stock = await ask('how many products are out of stock right now?')

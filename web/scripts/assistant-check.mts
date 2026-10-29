@@ -143,6 +143,31 @@ await check('a product question after a ticket-count turn searches products, not
   expect(reply.action === 'answer', `product information question became ${reply.action}`)
 })
 
+await check('a bare order request after catalog browsing looks up the live product first', async () => {
+  const h = harness({
+    token: 'customer-token',
+    product: { id: PRODUCT_ID, name: 'Sample Gadget', price: 24.5, stock: 17, is_active: true },
+    model: [
+      toolResponse([{ name: 'search_store', args: { query: 'order Sample Gadget' } }]),
+      toolResponse([{ name: 'prepare_checkout', args: { product_id: PRODUCT_ID, quantity: 1 } }]),
+      finalResponse('Sample Gadget is ready for checkout.', [`product:${PRODUCT_ID}`]),
+    ],
+  })
+  const reply = await runAssistant({
+    messages: [
+      { role: 'user', content: 'What do you sell?' },
+      { role: 'assistant', content: 'Sample Gadget is in our catalog.' },
+      { role: 'user', content: 'order Sample Gadget' },
+    ],
+    apiKey: 'test', runtime: h.runtime,
+  })
+  const firstModelRequest = h.requests.find((request) => request.url === ZRO_URL)
+  const body = JSON.parse(String(firstModelRequest?.init?.body))
+  expect(body.tool_choice?.function?.name === 'search_store', 'bare order request did not force a live product lookup')
+  expect(reply.action === 'confirm_order', `validated order did not produce checkout: ${reply.action}`)
+  expect(reply.order?.product_id === PRODUCT_ID, 'checkout proposal used the wrong product')
+})
+
 await check('a named product question forces the live catalog tool', async () => {
   const h = harness({
     token: 'customer-token',
