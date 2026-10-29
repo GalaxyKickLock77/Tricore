@@ -8,7 +8,7 @@ import {
   type BotReply,
   type ChatMessage,
 } from './core.js'
-import { ASSISTANT_TOOLS, type AssistantLink, type AssistantModelMessage, type AssistantToolCall } from './assistant-schema.js'
+import { ASSISTANT_RESPONSE_TOOL, ASSISTANT_TOOLS, type AssistantLink, type AssistantModelMessage, type AssistantToolCall } from './assistant-schema.js'
 import { emptyToolState, executeAssistantTool, type AssistantRuntime } from './assistant-tools.js'
 
 export interface AssistantReply extends BotReply {
@@ -102,12 +102,12 @@ async function requestOnce(
         model: model.id,
         messages,
         // Keep the tools list even when tools are disabled for providers that validate tool declarations.
-        tools: ASSISTANT_TOOLS,
+        tools: allowTools ? ASSISTANT_TOOLS : [...ASSISTANT_TOOLS, ASSISTANT_RESPONSE_TOOL],
         tool_choice: allowTools
           ? forceTool
             ? { type: 'function', function: { name: forceTool } }
             : 'required'
-          : 'none',
+          : { type: 'function', function: { name: ASSISTANT_RESPONSE_TOOL.function.name } },
         temperature: 0.2,
         max_tokens: 768,
         ...model.extra,
@@ -136,7 +136,13 @@ async function requestOnce(
     }
     const envelope = await res.json() as { data?: { choices?: { message?: ModelMessage }[] }; choices?: { message?: ModelMessage }[] }
     const choices = envelope.data?.choices ?? envelope.choices
-    return { message: choices?.[0]?.message }
+    const message = choices?.[0]?.message
+    const responseCall = message?.tool_calls?.find((call) => call.function?.name === ASSISTANT_RESPONSE_TOOL.function.name)
+    return {
+      message: responseCall?.function?.arguments
+        ? { ...message!, content: responseCall.function.arguments, tool_calls: undefined }
+        : message,
+    }
   } catch {
     return {}
   } finally {
@@ -291,7 +297,7 @@ export async function runAssistant(opts: {
         { role: 'assistant', content: null, tool_calls: [call] },
         { role: 'tool', tool_call_id: call.id, content },
       )
-      const checkoutTool = requiredTool === 'search_store' && isPurchase && hasNamedProduct(lastUser, state)
+      const checkoutTool = forced === 'search_store' && isPurchase && hasNamedProduct(lastUser, state)
         ? 'prepare_checkout'
         : undefined
       result = await callModel(apiKey, conversation, runtime.fetchImpl, !!checkoutTool, checkoutTool)

@@ -25,6 +25,13 @@ const toolResponse = (calls: { name: string; args: unknown }[]) => ({
 const finalResponse = (answer: string, sources: string[] = [], action = 'answer') => ({
   role: 'assistant', content: JSON.stringify({ intent: 'question', action, answer, handoff_reason: '', sources }),
 })
+const structuredFinalResponse = (answer: string, sources: string[] = []) => ({
+  role: 'assistant', content: null,
+  tool_calls: [{
+    id: 'answer-call', type: 'function',
+    function: { name: 'answer_user', arguments: JSON.stringify({ intent: 'question', action: 'answer', answer, handoff_reason: '', sources }) },
+  }],
+})
 const modelBody = (message: unknown) => new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 })
 
 interface HarnessOptions {
@@ -195,9 +202,12 @@ await check('a missing checkout tool call recovers using the live product UUID',
     ],
     apiKey: 'test', runtime: h.runtime,
   })
+  const modelRequests = h.requests.filter((request) => request.url === ZRO_URL)
   expect(reply.action === 'confirm_order', `missing checkout tool did not recover: ${reply.action}`)
   expect(reply.order?.product_id === PRODUCT_ID, 'recovered checkout did not use the catalog UUID')
   expect(h.requests.some((request) => request.url.includes(`/products?id=eq.${PRODUCT_ID}`)), 'recovery did not validate the product against Supabase')
+  expect(JSON.parse(String(modelRequests[1]?.init?.body)).tool_choice?.function?.name === 'prepare_checkout', 'checkout was not the required second tool')
+  expect(JSON.parse(String(modelRequests[2]?.init?.body)).tool_choice?.function?.name === 'answer_user', 'after server validation the model should return a structured checkout answer')
 })
 
 await check('a named product question forces the live catalog tool', async () => {
@@ -269,7 +279,7 @@ await check('a rejected ticket tool call recovers live data before LLM phrasing'
       tickets: { total: 6, pending: 3, open: 2, in_progress: 1, resolved: 3 },
     },
     toolCallFails: true,
-    model: [finalResponse('There are 2 open support tickets in the store.', ['account:tickets'])],
+    model: [structuredFinalResponse('There are 2 open support tickets in the store.', ['account:tickets'])],
   })
   const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
   const modelRequests = h.requests.filter((request) => request.url === ZRO_URL)
@@ -277,7 +287,7 @@ await check('a rejected ticket tool call recovers live data before LLM phrasing'
   expect(reply.sources.some((source) => source.id === 'account:tickets'), 'recovered response lacks a live ticket source')
   expect(h.requests.some((request) => request.url.endsWith('/rpc/chat_account_context')), 'rejected tool call did not trigger a live account lookup')
   expect(modelRequests.length === 2, `expected rejected tool call plus LLM phrasing call, got ${modelRequests.length}`)
-  expect(JSON.parse(String(modelRequests[1].init?.body)).tool_choice === 'none', 'recovery call should ask the LLM to phrase the fetched result without another tool call')
+  expect(JSON.parse(String(modelRequests[1].init?.body)).tool_choice?.function?.name === 'answer_user', 'recovery call should ask the LLM to return a structured phrase without another data tool')
 })
 
 await check('a missing required tool call is recovered before answering ticket counts', async () => {
@@ -290,7 +300,7 @@ await check('a missing required tool call is recovered before answering ticket c
     omitRequiredTool: true,
     model: [
       finalResponse('There are 2 open tickets.', []),
-      finalResponse('There are 2 open support tickets in the store.', ['account:tickets']),
+      structuredFinalResponse('There are 2 open support tickets in the store.', ['account:tickets']),
     ],
   })
   const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })

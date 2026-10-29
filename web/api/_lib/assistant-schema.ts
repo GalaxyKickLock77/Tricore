@@ -110,3 +110,23 @@ export const ASSISTANT_TOOLS = [
     },
   },
 ] as const
+
+export const ASSISTANT_RESPONSE_TOOL = {
+  type: 'function',
+  function: {
+    name: 'answer_user',
+    description: 'Return the final grounded answer to the user in the required structured fields.',
+    parameters: {
+      type: 'object',
+      properties: {
+        intent: { type: 'string', enum: ['greeting', 'offtopic', 'question'] },
+        action: { type: 'string', enum: ['answer', 'offer_team', 'handoff', 'confirm_order'] },
+        answer: { type: 'string' },
+        handoff_reason: { type: 'string' },
+        sources: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['intent', 'action', 'answer', 'sources'],
+      additionalProperties: false,
+    },
+  },
+} as const
