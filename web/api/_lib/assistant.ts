@@ -1,5 +1,5 @@
 import {
-  CLINE_CHAT_COMPLETIONS_URL,
+  ZRO_CHAT_COMPLETIONS_URL,
   MODELS,
   extractJson,
   numbersAreGrounded,
@@ -95,7 +95,7 @@ async function requestOnce(
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20_000)
   try {
-    const res = await fetchImpl(CLINE_CHAT_COMPLETIONS_URL, {
+    const res = await fetchImpl(ZRO_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -321,7 +321,7 @@ export async function runAssistant(opts: {
     let sources = requestedSources
       .filter((id): id is string => typeof id === 'string' && state.sources.has(id))
       .map((id) => state.sources.get(id)!)
-    if (needsSources && sources.length === 0) sources = [...state.sources.values()].slice(0, 8)
+    if (sources.length === 0 && state.sources.size > 0) sources = [...state.sources.values()].slice(0, 8)
     if (state.order) action = 'confirm_order'
     else if (action === 'confirm_order') action = 'answer'
     let text = answer

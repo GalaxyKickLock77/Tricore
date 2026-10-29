@@ -1,6 +1,6 @@
 // AI helpers for the admin support queue: suggested reply, ticket summary/priority, knowledge-base draft.
 // The AI only DRAFTS. A human reads and sends/saves everything.
-import { MODELS, callCline, extractJson, numbersAreGrounded, type ChatContext, type ClineResponseTool } from './core.js'
+import { MODELS, callProvider, extractJson, numbersAreGrounded, type ChatContext, type ProviderResponseTool } from './core.js'
 
 export type AiMode = 'suggest_reply' | 'summarize' | 'kb_draft'
 
@@ -96,7 +96,7 @@ export type AiOutcome = { ok: true; result: AiResult } | { ok: false; error: str
 const CATEGORIES = ['payment', 'delivery', 'order', 'product', 'account', 'complaint', 'other']
 const PRIORITIES = ['low', 'normal', 'high', 'urgent']
 
-function outputTool(mode: AiMode): ClineResponseTool {
+function outputTool(mode: AiMode): ProviderResponseTool {
   const shared = {
     type: 'object',
     additionalProperties: false,
@@ -160,7 +160,7 @@ export async function runSupportAi(opts: {
   let model = ''
   let rateLimited = false
   for (const m of MODELS) {
-    const r = await callCline(apiKey, m, messages, fetchImpl, outputTool(mode))
+    const r = await callProvider(apiKey, m, messages, fetchImpl, outputTool(mode))
     if (r.ok) {
       content = r.content
       model = m.id

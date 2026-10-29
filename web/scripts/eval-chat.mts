@@ -1,4 +1,4 @@
-// Offline accuracy evaluation of the Tricore assistant against the real Cline API.
+// Offline accuracy evaluation of the Tricore assistant against the real Zro API.
 // Run: node --env-file=.env.local scripts/eval-chat.mts   (from web/)
 import { readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import { answerQuestion, type ChatContext, type BotReply } from '../api/_lib/core.ts'
@@ -127,7 +127,7 @@ const failures: string[] = []
 for (const [i, c] of cases.entries()) {
   let r: BotReply | undefined
   for (let attempt = 0; attempt < 4; attempt++) {
-    r = await answerQuestion({ messages: c.msgs ?? [{ role: 'user', content: c.q! }], context: retrieve(c.msgs ?? [{ role: 'user', content: c.q! }]), apiKey: process.env.CLINE_API_KEY! })
+    r = await answerQuestion({ messages: c.msgs ?? [{ role: 'user', content: c.q! }], context: retrieve(c.msgs ?? [{ role: 'user', content: c.q! }]), apiKey: process.env.ZRO_API_KEY! })
     if (r.handoffReason !== 'model rate limited') break
     await sleep(25000)
   }

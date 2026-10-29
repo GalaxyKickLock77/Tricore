@@ -27,8 +27,8 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
   environment: variable `SUPABASE_PROJECT_REF`, secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`.
 
 ## AI assistant (chat widget)
-- **Where:** floating chat button on every page. Backend: `web/api/chat.ts` (Vercel serverless function) calling Cline
-  (`nvidia/nemotron-3.5-lightning:free`, with `recursive/flint-v1.0:free` as fallback). Logic: `web/api/_lib/assistant.ts`,
+- **Where:** floating chat button on every page. Backend: `web/api/chat.ts` (Vercel serverless function) calling Zro
+  (`deepseek-v4.1-flash`, with `glm-5.3-flash` as fallback). Logic: `web/api/_lib/assistant.ts`,
   tools in `web/api/_lib/assistant-tools.ts`.
 - **Live tools, no memorised facts:** the model answers only from tools that read the database while it is answering:
   `search_store` (knowledge articles from `kb_articles` plus the live product list, through the `chat_context()` RPC),
@@ -53,7 +53,7 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
   1. Fresh install: run `supabase/chatbot-setup.sql` in the Supabase SQL editor (chat tables, context functions,
      account insight function and knowledge base). Already installed? Run the migrations you are missing, in date order -
      the assistant needs `20261105000000_chat_assistant.sql` and `20261106000000_chat_account_insights.sql`.
-  2. Set `CLINE_API_KEY` in Vercel (Production + Preview, type Sensitive). Never commit it or use a `VITE_` prefix.
+  2. Set `ZRO_API_KEY` in Vercel (Production + Preview, type Sensitive). Never commit it or use a `VITE_` prefix.
   3. Edit the knowledge base: the admin **Knowledge** page, or Supabase Table Editor on `kb_articles` (or edit
      `supabase/kb/articles.json`, run `node web/scripts/gen-kb-sql.mjs`, and run the generated `supabase/seed_kb.sql`).
 - **Evaluate:** from `web/`: `node scripts/assistant-check.mts` (offline: tools, guardrails and scope, no model call),
@@ -68,8 +68,8 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 - **Store and account questions answered directly:** "how many support tickets were closed", "how many orders need
   shipping", "how many products are out of stock", "what are my recent orders" - all from live figures, for admins
   store-wide and for customers their own.
-- **Provider capacity:** the assistant currently uses Cline's free `nvidia/nemotron-3.5-lightning` route. Availability
-  and limits are controlled by Cline and the selected model. Public FAQ answers are cached for 15 minutes and small talk
+- **Provider capacity:** the assistant uses Zro's `deepseek-v4.1-flash` route with `glm-5.3-flash` as fallback. Availability
+  and limits are controlled by Zro and the selected model. Public FAQ answers are cached for 15 minutes and small talk
   needs no model call; private or live data is never cached.
 - **Checks without the model:** `node scripts/assistant-check.mts` (tool use, scope and guardrails) and
   `node scripts/logic-check.mts` (product matching, price detection, memory) from `web/`.

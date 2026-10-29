@@ -2,7 +2,7 @@
 import { runAssistant } from '../api/_lib/assistant.ts'
 import type { ChatMessage } from '../api/_lib/core.ts'
 
-const CLINE_URL = 'https://api.cline.bot/api/v1/chat/completions'
+const ZRO_URL = 'https://zro.moonmath.ai/v1/chat/completions'
 
 const PRODUCT_ID = '11111111-1111-4111-8111-111111111111'
 const PRODUCT = {
@@ -43,7 +43,7 @@ function harness(options: HarnessOptions) {
   const fetchImpl = (async (url: any, init?: any) => {
     const target = String(url)
     requests.push({ url: target, init })
-    if (target === CLINE_URL) {
+    if (target === ZRO_URL) {
       if (options.modelFails) {
         return new Response(JSON.stringify({ error: 'model unavailable' }), { status: 401 })
       }
@@ -136,7 +136,7 @@ await check('a product question after a ticket-count turn searches products, not
     ],
     apiKey: 'test', runtime: h.runtime,
   })
-  const request = h.requests.find((item) => item.url === CLINE_URL)
+  const request = h.requests.find((item) => item.url === ZRO_URL)
   const body = JSON.parse(String(request?.init?.body))
   expect(body.tool_choice?.function?.name === 'search_store', `latest product question did not force search_store: ${JSON.stringify(body.tool_choice)}`)
   expect(reply.answer === 'We sell Tricore Test Laptop.', `product question got a stale answer: ${reply.answer}`)
@@ -165,16 +165,16 @@ await check('a signed-out catalog question asks for sign-in instead of an ungrou
   const reply = await runAssistant({ messages: user('What do you sell?'), apiKey: 'test', runtime: h.runtime })
   expect(reply.link?.path === '/login', `login link missing: ${JSON.stringify(reply.link)}`)
   expect(/sign in/i.test(reply.answer), `expected a sign-in explanation, got ${reply.answer}`)
-  expect(!h.requests.some((request) => request.url === CLINE_URL), 'signed-out catalog prompt should not depend on Cline')
+  expect(!h.requests.some((request) => request.url === ZRO_URL), 'signed-out catalog prompt should not depend on the provider')
 })
 
-await check('a Cline outage still preserves sign-in for a signed-out catalog question', async () => {
+await check('a provider outage still preserves sign-in for a signed-out catalog question', async () => {
   const h = harness({ model: [] })
   const reply = await runAssistant({ messages: user('What do you sell?'), apiKey: 'test', runtime: h.runtime })
   expect(reply.action === 'answer', `expected sign-in guidance, got ${reply.action}`)
   expect(reply.link?.path === '/login', `login link missing after provider failure: ${JSON.stringify(reply.link)}`)
   expect(/sign in/i.test(reply.answer), `expected sign-in explanation, got ${reply.answer}`)
-  expect(!h.requests.some((request) => request.url === CLINE_URL), 'signed-out catalog prompt should not call Cline')
+  expect(!h.requests.some((request) => request.url === ZRO_URL), 'signed-out catalog prompt should not call the provider')
   expect(!h.requests.some((request) => request.url.includes('chat_context')), 'signed-out product browsing must not query private products')
 })
 
@@ -198,7 +198,7 @@ await check('ticket section count is explained by the model from live data', asy
   expect(reply.answer === 'There are 6 tickets in the support section: 2 open, 1 in progress, and 3 resolved.', reply.answer)
   expect(reply.sources.some((source) => source.id === 'account:tickets'), 'ticket count did not include its live source')
   expect(reply.link === undefined, 'the answer should not force unnecessary navigation')
-  const modelRequest = h.requests.find((request) => request.url === CLINE_URL)
+  const modelRequest = h.requests.find((request) => request.url === ZRO_URL)
   const modelBody = JSON.parse(String(modelRequest?.init?.body))
   expect(modelBody.tool_choice?.function?.name === 'read_account', 'ticket section count must force live ticket data')
   expect(modelBody.messages[0].content.includes('"Available" without a status means the total'), 'model instructions omit the support-section interpretation')
@@ -215,7 +215,7 @@ await check('a rejected ticket tool call recovers live data before LLM phrasing'
     model: [finalResponse('There are 2 open support tickets in the store.', ['account:tickets'])],
   })
   const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
-  const modelRequests = h.requests.filter((request) => request.url === CLINE_URL)
+  const modelRequests = h.requests.filter((request) => request.url === ZRO_URL)
   expect(reply.answer === 'There are 2 open support tickets in the store.', reply.answer)
   expect(reply.sources.some((source) => source.id === 'account:tickets'), 'recovered response lacks a live ticket source')
   expect(h.requests.some((request) => request.url.endsWith('/rpc/chat_account_context')), 'rejected tool call did not trigger a live account lookup')
@@ -301,7 +301,27 @@ await check('pending support count uses exact live aggregates and adds support n
   const accountRequest = h.requests.find((r) => r.url.endsWith('/rpc/chat_account_context'))
   const headers = accountRequest?.init?.headers as Record<string, string>
   expect(headers.Authorization === 'Bearer admin-token', 'private data must use the user token, not a service key')
-  expect(h.requests.some((r) => r.url === CLINE_URL), 'LLM should explain the live pending ticket counts')
+  expect(h.requests.some((r) => r.url === ZRO_URL), 'LLM should explain the live pending ticket counts')
+})
+
+await check('a factual answer keeps its live source when it also links to a page', async () => {
+  const h = harness({
+    token: 'admin-token',
+    account: {
+      viewer_is_admin: true,
+      tickets: { total: 3, pending: 2, open: 1, in_progress: 1, resolved: 1 },
+    },
+    model: [
+      toolResponse([
+        { name: 'read_account', args: { resource: 'tickets' } },
+        { name: 'show_page', args: { page: '/admin/support', label: 'Open support tickets' } },
+      ]),
+      finalResponse('There is 1 open ticket in the store.', []),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
+  expect(reply.sources.some((source) => source.id === 'account:tickets'), 'live ticket source missing when a navigation link is present')
+  expect(reply.link?.path === '/admin/support', 'support navigation link missing')
 })
 
 await check('signed-out account questions require sign-in and never query private data', async () => {
@@ -311,7 +331,7 @@ await check('signed-out account questions require sign-in and never query privat
   const reply = await runAssistant({ messages: user('How many tickets do I have?'), apiKey: 'test', runtime: h.runtime })
   expect(reply.link?.path === '/login', 'sign-in button missing')
   expect(!h.requests.some((r) => r.url.includes('chat_account_context')), 'anonymous private query was attempted')
-  expect(!h.requests.some((r) => r.url === CLINE_URL), 'signed-out account response should not depend on Cline')
+  expect(!h.requests.some((r) => r.url === ZRO_URL), 'signed-out account response should not depend on the provider')
 })
 
 await check('a model outage preserves the sign-in link for private ticket questions', async () => {

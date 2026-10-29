@@ -1,4 +1,4 @@
-// Tricore assistant core: grounded answering with Cline + programmatic verification.
+// Tricore assistant core: grounded answering with Zro + programmatic verification.
 // Pure logic (no HTTP framework) so it can be unit/eval tested outside Vercel.
 
 export type Role = 'user' | 'assistant'
@@ -51,15 +51,15 @@ export interface BotReply {
   order?: OrderProposal
 }
 
-export const CLINE_CHAT_COMPLETIONS_URL = 'https://api.cline.bot/api/v1/chat/completions'
+export const ZRO_CHAT_COMPLETIONS_URL = 'https://zro.moonmath.ai/v1/chat/completions'
 
-// Cline's free model was verified with the app's OpenAI-compatible tool-call format.
+// Zro's OpenAI-compatible model order: primary model, then provider fallback.
 export const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'nvidia/nemotron-3.5-lightning:free', extra: {} },
-  { id: 'recursive/flint-v1.0:free', extra: {} },
+  { id: 'deepseek-v4.1-flash', extra: {} },
+  { id: 'glm-5.3-flash', extra: {} },
 ]
 
-export interface ClineResponseTool {
+export interface ProviderResponseTool {
   type: 'function'
   function: {
     name: string
@@ -68,7 +68,7 @@ export interface ClineResponseTool {
   }
 }
 
-const ANSWER_TOOL: ClineResponseTool = {
+const ANSWER_TOOL: ProviderResponseTool = {
   type: 'function',
   function: {
     name: 'answer_user',
@@ -251,24 +251,24 @@ ${productText}${ordersText}`
   return { system, idMap, contextText: `${articleText}\n${productText}\n${ordersText}` }
 }
 
-export type ClineOutcome = { ok: true; content: string } | { ok: false; status: number }
-type ClineChatMessage = {
+export type ProviderOutcome = { ok: true; content: string } | { ok: false; status: number }
+type ProviderChatMessage = {
   content?: string | null
   reasoning_content?: string | null
   tool_calls?: { function?: { name?: string; arguments?: string } }[]
 }
 
-export async function callCline(
+export async function callProvider(
   apiKey: string,
   model: (typeof MODELS)[number],
   messages: { role: string; content: string }[],
   fetchImpl: typeof fetch,
-  responseTool?: ClineResponseTool,
-): Promise<ClineOutcome> {
+  responseTool?: ProviderResponseTool,
+): Promise<ProviderOutcome> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20000)
   try {
-    const res = await fetchImpl(CLINE_CHAT_COMPLETIONS_URL, {
+    const res = await fetchImpl(ZRO_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -286,8 +286,8 @@ export async function callCline(
     })
     if (!res.ok) return { ok: false, status: res.status }
     const envelope = (await res.json()) as {
-      data?: { choices?: { message?: ClineChatMessage }[] }
-      choices?: { message?: ClineChatMessage }[]
+      data?: { choices?: { message?: ProviderChatMessage }[] }
+      choices?: { message?: ProviderChatMessage }[]
     }
     const choices = envelope.data?.choices ?? envelope.choices
     const message = choices?.[0]?.message
@@ -693,7 +693,7 @@ export async function answerQuestion(opts: {
     let model = ''
     let rateLimited = false
     for (const m of MODELS) {
-      const r = await callCline(apiKey, m, [...convo, ...extra], fetchImpl, ANSWER_TOOL)
+      const r = await callProvider(apiKey, m, [...convo, ...extra], fetchImpl, ANSWER_TOOL)
       if (r.ok) {
         content = r.content
         model = m.id

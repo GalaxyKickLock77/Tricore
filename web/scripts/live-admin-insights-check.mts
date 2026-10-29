@@ -1,5 +1,5 @@
 // LIVE admin-insight check: does the assistant answer store questions from real data, with no canned text?
-// No stubs: real Supabase Auth, real Cline, real /api/chat handler.
+// No stubs: real Supabase Auth, real Zro, real /api/chat handler.
 // 1. Creates a temporary account and promotes it to admin (service-role key, admin API only).
 // 2. Reads the ground-truth figures straight from the database with that admin's own token.
 // 3. Asks the assistant the same questions and compares every number it says with the database.
@@ -18,8 +18,8 @@ if (existsSync(envFile)) {
 const SUPA = (process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 const PUBLISHABLE = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? ''
-if (!SUPA || !SERVICE || !PUBLISHABLE || !process.env.CLINE_API_KEY) {
-  console.error('Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_PUBLISHABLE_KEY or CLINE_API_KEY in web/.env.local')
+if (!SUPA || !SERVICE || !PUBLISHABLE || !process.env.ZRO_API_KEY) {
+  console.error('Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_PUBLISHABLE_KEY or ZRO_API_KEY in web/.env.local')
   process.exit(2)
 }
 
@@ -76,7 +76,7 @@ try {
   const { POST } = await import('../api/chat.ts')
   let ipCounter = 0
   const ask = async (question: string, withToken = true) => {
-    await new Promise((r) => setTimeout(r, 4000)) // Pace free-model requests
+    await new Promise((r) => setTimeout(r, 4000)) // Pace provider requests
     const res = await POST(new Request('http://localhost/api/chat', {
       method: 'POST',
       headers: {
