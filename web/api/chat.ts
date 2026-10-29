@@ -55,6 +55,22 @@ export async function POST(request: Request): Promise<Response> {
 
   const rawName = typeof body.name === 'string' ? body.name.trim().split(/\s+/)[0] : ''
   const name = /^[\\p{L}'-]{2,24}$/u.test(rawName) ? rawName : undefined
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || undefined
+
+  // Determine if the user is an admin (via is_admin RPC, which checks the current user's role).
+  let isAdmin = false
+  if (token) {
+    try {
+      const profRes = await fetch(`${supaUrl}/rest/v1/rpc/is_admin`, {
+        method: 'POST',
+        headers: { apikey: supaKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      if (profRes.ok) {
+        isAdmin = (await profRes.json()) === true
+      }
+    } catch { /* ignore */ }
+  }
 
   const memory = (Array.isArray(body.memory) ? body.memory : [])
     .filter((n): n is string => typeof n === 'string')
@@ -81,7 +97,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const lastText = messages[messages.length - 1].content
-  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (wantsOrderStatus(lastText)) {
     context.orders = null
     if (token) {
@@ -101,7 +116,7 @@ export async function POST(request: Request): Promise<Response> {
   const hit = cacheKey ? cache.get(cacheKey) : undefined
   if (hit && Date.now() - hit.at < CACHE_MS) return json(hit.reply)
 
-  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name, signedIn: !!token, memory })
+  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name, signedIn: !!token, isAdmin, memory })
   const faqOnly = Array.isArray(reply.sources) && reply.sources.length > 0 && reply.sources.every((x) => !/^p\d+$/.test(x.id))
   if (cacheKey && _model && faqOnly && reply.action === 'answer' && reply.intent === 'question' && reply.verified) {
     if (cache.size > 300) cache.clear()
