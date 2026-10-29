@@ -128,6 +128,7 @@ try {
         ? `no live product source: ${JSON.stringify(products.sources)}`
         : !liveNames.some((name: string) => String(products.answer).toLowerCase().includes(name.toLowerCase()))
           ? `answer did not name any live catalog item: ${products.answer}`
+          : /\$|\bUSD\b/i.test(String(products.answer)) ? `product answer used the wrong currency: ${products.answer}`
           : null,
     `A: ${String(products.answer).replace(/\s+/g, ' ')}`)
 
@@ -139,6 +140,7 @@ try {
     order.action !== 'confirm_order' ? `action=${order.action}: ${order.answer}`
       : !order.order?.product_id || !/sample gadget/i.test(String(order.order?.name))
         ? `invalid checkout proposal: ${JSON.stringify(order.order)}`
+        : /\$|\bUSD\b/i.test(String(order.answer)) ? `checkout answer used the wrong currency: ${order.answer}`
         : null,
     `A: ${String(order.answer).replace(/\s+/g, ' ')}`)
 

@@ -223,6 +223,11 @@ await check('a named product question forces the live catalog tool', async () =>
   const body = JSON.parse(String(request?.init?.body))
   expect(body.tool_choice?.function?.name === 'search_store', 'named product question did not force the catalog tool')
   expect(reply.sources.some((source) => source.id === `product:${PRODUCT_ID}`), 'named product answer lacks a live catalog source')
+  const resultRequest = h.requests.filter((item) => item.url === ZRO_URL)[1]
+  const resultBody = JSON.parse(String(resultRequest?.init?.body))
+  const productToolResult = resultBody.messages.find((message: any) => message.role === 'tool')?.content ?? ''
+  expect(productToolResult.includes('price_inr') && !productToolResult.includes('price_usd'), 'model-facing product prices must be explicitly INR')
+  expect(resultBody.messages[0].content.includes('never label them $ or USD'), 'system prompt omits the INR formatting rule')
 })
 
 await check('a signed-out catalog question asks for sign-in instead of an ungrounded fallback', async () => {

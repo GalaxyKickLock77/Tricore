@@ -77,12 +77,19 @@ async function searchStore(args: Record<string, unknown>, runtime: AssistantRunt
   })).filter((p) => p.id && p.name && Number.isFinite(p.price_usd))
   for (const a of context.articles) state.sources.set(a.id, { id: a.id, title: a.title })
   for (const p of context.products) addProduct(state, p)
+  const modelProducts = context.products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    price_inr: product.price_usd,
+    availability: product.availability,
+    description: product.description,
+  }))
   const payload = {
     articles: context.articles,
-    products: context.products,
+    products: modelProducts,
     total_products: context.total_products,
     catalog_note: runtime.token
-      ? 'Live results. Product ids are stable ids to pass to prepare_checkout after removing product:.'
+      ? 'Live results. Prices are in Indian rupees (INR). Product ids are stable ids to pass to prepare_checkout after removing product:.'
       : 'Sign in is required to browse products and prices.',
   }
   state.contextText.push(JSON.stringify(payload))
@@ -158,7 +165,7 @@ async function prepareCheckout(args: Record<string, unknown>, runtime: Assistant
     description: '',
   }
   addProduct(state, kbProduct)
-  const live = { product_id: sourceId, name: product.name, unit_price: price, stock, requested_quantity: quantity }
+  const live = { product_id: sourceId, name: product.name, unit_price: price, currency: 'INR', stock, requested_quantity: quantity }
   state.contextText.push(JSON.stringify(live))
   if (!Number.isFinite(price) || price < 0) return { error: 'The product price is unavailable.' }
   if (stock < 1) return { ...live, error: 'This product is out of stock; do not prepare checkout.' }
