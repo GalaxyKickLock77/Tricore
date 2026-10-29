@@ -56,6 +56,7 @@ export const CLINE_CHAT_COMPLETIONS_URL = 'https://api.cline.bot/api/v1/chat/com
 // Cline's free model was verified with the app's OpenAI-compatible tool-call format.
 export const MODELS: { id: string; extra: Record<string, unknown> }[] = [
   { id: 'nvidia/nemotron-3.5-lightning:free', extra: {} },
+  { id: 'recursive/flint-v1.0:free', extra: {} },
 ]
 
 export interface ClineResponseTool {

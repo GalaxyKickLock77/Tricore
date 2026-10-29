@@ -115,6 +115,22 @@ try {
           : allGrounded(open),
     `A: ${String(open.answer).replace(/\s+/g, ' ')}`)
 
+  const products = await ask('What do you sell?')
+  const liveNames = [
+    ...(truth.catalog?.cheapest ?? []),
+    ...(truth.catalog?.dearest ?? []),
+    ...(truth.catalog?.low_stock ?? []),
+    ...(truth.catalog?.out_of_stock ?? []),
+  ].map((product: any) => String(product.name ?? '')).filter(Boolean)
+  report('product question uses live catalog data',
+    products.action !== 'answer' ? `action=${products.action}: ${products.answer}`
+      : !products.sources?.some((source: any) => String(source.id).startsWith('product:'))
+        ? `no live product source: ${JSON.stringify(products.sources)}`
+        : !liveNames.some((name: string) => String(products.answer).toLowerCase().includes(name.toLowerCase()))
+          ? `answer did not name any live catalog item: ${products.answer}`
+          : null,
+    `A: ${String(products.answer).replace(/\s+/g, ' ')}`)
+
   // 2. A catalogue figure the assistant had never been able to see before.
   const stock = await ask('how many products are out of stock right now?')
   report('out-of-stock count comes from live data',

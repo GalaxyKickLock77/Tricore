@@ -46,7 +46,7 @@ export const ASSISTANT_TOOLS = [
     type: 'function',
     function: {
       name: 'search_store',
-      description: 'Search Tricore knowledge articles and the live product catalog. Use for every product, price, stock, recommendation, comparison, policy, or how-to question, including questions that name an item without saying "product". Also use for ticket process or policy questions.',
+      description: 'Search Tricore knowledge articles and the live product catalog. Use for every product, price, stock, recommendation, comparison, policy, or how-to question, including questions that name an item without saying "product". For broad catalog questions, answer with exact names from the returned products array and cite product sources; do not treat article examples as catalog items. Also use for ticket process or policy questions.',
       parameters: {
         type: 'object',
         properties: {

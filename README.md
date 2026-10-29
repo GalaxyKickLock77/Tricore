@@ -28,7 +28,7 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 
 ## AI assistant (chat widget)
 - **Where:** floating chat button on every page. Backend: `web/api/chat.ts` (Vercel serverless function) calling Cline
-  (`nvidia/nemotron-3.5-lightning:free`). Logic: `web/api/_lib/assistant.ts`,
+  (`nvidia/nemotron-3.5-lightning:free`, with `recursive/flint-v1.0:free` as fallback). Logic: `web/api/_lib/assistant.ts`,
   tools in `web/api/_lib/assistant-tools.ts`.
 - **Live tools, no memorised facts:** the model answers only from tools that read the database while it is answering:
   `search_store` (knowledge articles from `kb_articles` plus the live product list, through the `chat_context()` RPC),

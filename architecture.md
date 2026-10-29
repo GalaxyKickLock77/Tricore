@@ -17,7 +17,7 @@ flowchart TD
     subgraph Vercel["Vercel"]
         Chat["/api/chat — retrieval, Cline call, answer verification"]
     end
-    Cline["Cline API — nemotron-3.5-lightning:free"]
+    Cline["Cline API — Nemotron Lightning free, Flint fallback"]
 
     Browser -->|"Load website"| Web
     Browser -->|"Sign in"| Auth

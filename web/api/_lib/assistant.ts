@@ -47,11 +47,13 @@ TOOLS - call them before you answer; you have no facts of your own:
 RULES:
 - Every fact comes from a tool result in this conversation. Never say you cannot see counts, tickets, orders or stock without having called the tool, and never send someone to a page instead of answering when read_account can answer them.
 - For every new user question about a product or ticket, make a fresh relevant tool call before answering. Do not reuse a previous turn's answer or tool result as the source for the new question.
+- For "what do you sell", "what products do you have", or a broad catalog question, describe only exact item names and details from the search_store products array. Do not turn examples in knowledge articles into products. Cite at least one product source returned by search_store.
 - For "how many tickets are available/in the support section" or "how many tickets does the store have", answer from tickets.total and briefly include open, in_progress and resolved counts from the same result. "Available" without a status means the total, not just open tickets. Use viewer_scope to say whether the figures are for the store or only the signed-in customer.
 - For a status-specific ticket question, use its exact field: tickets.open, tickets.in_progress, tickets.resolved, or tickets.pending. The payload defines pending; do not substitute one status for another.
 - Copy numbers exactly as the tools returned them; choose the right status using status_vocabulary and the definitions in the payload (for example pending is defined there). Do not invent percentages, averages, rates or dates, and do not do arithmetic on figures you were not given.
 - Stay inside viewer_scope: an admin's answer may use store-wide data; a customer's answer may use only their own records and public products. Never reveal another customer's details.
 - Signed-out buy/checkout/orders/tickets requests -> call show_page /login and ask them to sign in.
+- Signed-out product browsing, availability, price or catalog requests -> call show_page /login; do not answer from an empty product result.
 - Never place orders, take payments, change prices, stock or ticket status.
 - Discounts, deals, bulk pricing or anything you cannot do -> action offer_team and ask first.
 - Missing detail (a spec, shipping charge, delivery time) -> say you do not have it and that the team confirms after the order. Do not guess.
@@ -194,7 +196,10 @@ function requiredToolArgs(question: string, tool: string): Record<string, unknow
 }
 
 function requiredToolForQuestion(question: string, signedIn: boolean): string | undefined {
-  if (!signedIn && /\b(check ?out|buy|purchase|orders?|tickets?|account)\b/i.test(question)) return 'show_page'
+  const needsAccount = /\b(check ?out|buy|purchase|orders?|tickets?|account)\b/i.test(question)
+  const asksAboutProducts = /\b(products?|sell|catalog|catalogue|price|cost|available|stock|items?|carry|recommend|compare|specs?)\b/i.test(question) ||
+    /\bdo you (have|sell|carry|stock|offer)\b/i.test(question)
+  if (!signedIn && (needsAccount || asksAboutProducts)) return 'show_page'
   if (/\b(tickets?|support requests?|support cases?)\b/i.test(question)) return 'read_account'
   const asksForLiveFigures = /\b(how many|how much|number of|count|are there|what(?:'s| is) the status|recent|this week|this month)\b/i.test(question)
   if (asksForLiveFigures && /\b(tickets?|support requests?|orders?|products?|stock)\b/i.test(question)) return 'read_account'
@@ -230,10 +235,20 @@ export async function runAssistant(opts: {
   // Signed-out buy/checkout requests must always get the sign-in button, so the first round is forced to call show_page.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
   const requiredTool = requiredToolForQuestion(lastUser, !!runtime.token)
+  if (!runtime.token && requiredTool === 'show_page') {
+    const content = await executeAssistantTool('show_page', requiredToolArgs(lastUser, requiredTool), runtime, state)
+    if (JSON.parse(content).path === '/login' && state.link) {
+      return {
+        action: 'answer', intent: 'question', answer: 'Please sign in to browse the catalog and account details.',
+        sources: [], verified: true, memory, link: state.link,
+      }
+    }
+  }
   for (let round = 0; round < 3; round++) {
     const forced = round === 0 ? requiredTool : undefined
     let result = await callModel(apiKey, conversation, runtime.fetchImpl, round < 2, forced)
-    if (!result.message && result.toolCallFailed && requiredTool) {
+    const calledRequiredTool = result.message && toolCalls(result.message).some((call) => call.function.name === requiredTool)
+    if (round === 0 && requiredTool && !calledRequiredTool) {
       const call: AssistantToolCall = {
         id: 'server-tool-recovery',
         type: 'function',
@@ -308,6 +323,7 @@ export async function runAssistant(opts: {
       .map((id) => state.sources.get(id)!)
     if (needsSources && sources.length === 0) sources = [...state.sources.values()].slice(0, 8)
     if (state.order) action = 'confirm_order'
+    else if (action === 'confirm_order') action = 'answer'
     let text = answer
     // The contact form only opens on an explicit request (handled before the model runs) or a "yes" to
     // this offer, so an unprompted handoff becomes a question first.

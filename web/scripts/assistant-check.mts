@@ -34,6 +34,8 @@ interface HarnessOptions {
   account?: unknown
   accountFails?: boolean
   toolCallFails?: boolean
+  omitRequiredTool?: boolean
+  modelFails?: boolean
 }
 function harness(options: HarnessOptions) {
   const model = [...options.model]
@@ -42,6 +44,13 @@ function harness(options: HarnessOptions) {
     const target = String(url)
     requests.push({ url: target, init })
     if (target === CLINE_URL) {
+      if (options.modelFails) {
+        return new Response(JSON.stringify({ error: 'model unavailable' }), { status: 401 })
+      }
+      if (options.omitRequiredTool && requests.filter((request) => request.url === target).length === 1) {
+        if (!model.length) throw new Error('Unexpected extra model call')
+        return modelBody(model.shift())
+      }
       if (options.toolCallFails && requests.filter((request) => request.url === target).length === 1) {
         return new Response(JSON.stringify({ error: { code: 'tool_use_failed', message: 'Tool choice is required, but model did not call a tool' } }), { status: 400 })
       }
@@ -131,6 +140,7 @@ await check('a product question after a ticket-count turn searches products, not
   const body = JSON.parse(String(request?.init?.body))
   expect(body.tool_choice?.function?.name === 'search_store', `latest product question did not force search_store: ${JSON.stringify(body.tool_choice)}`)
   expect(reply.answer === 'We sell Tricore Test Laptop.', `product question got a stale answer: ${reply.answer}`)
+  expect(reply.action === 'answer', `product information question became ${reply.action}`)
 })
 
 await check('a named product question forces the live catalog tool', async () => {
@@ -146,6 +156,26 @@ await check('a named product question forces the live catalog tool', async () =>
   const body = JSON.parse(String(request?.init?.body))
   expect(body.tool_choice?.function?.name === 'search_store', 'named product question did not force the catalog tool')
   expect(reply.sources.some((source) => source.id === `product:${PRODUCT_ID}`), 'named product answer lacks a live catalog source')
+})
+
+await check('a signed-out catalog question asks for sign-in instead of an ungrounded fallback', async () => {
+  const h = harness({
+    model: [],
+  })
+  const reply = await runAssistant({ messages: user('What do you sell?'), apiKey: 'test', runtime: h.runtime })
+  expect(reply.link?.path === '/login', `login link missing: ${JSON.stringify(reply.link)}`)
+  expect(/sign in/i.test(reply.answer), `expected a sign-in explanation, got ${reply.answer}`)
+  expect(!h.requests.some((request) => request.url === CLINE_URL), 'signed-out catalog prompt should not depend on Cline')
+})
+
+await check('a Cline outage still preserves sign-in for a signed-out catalog question', async () => {
+  const h = harness({ model: [] })
+  const reply = await runAssistant({ messages: user('What do you sell?'), apiKey: 'test', runtime: h.runtime })
+  expect(reply.action === 'answer', `expected sign-in guidance, got ${reply.action}`)
+  expect(reply.link?.path === '/login', `login link missing after provider failure: ${JSON.stringify(reply.link)}`)
+  expect(/sign in/i.test(reply.answer), `expected sign-in explanation, got ${reply.answer}`)
+  expect(!h.requests.some((request) => request.url === CLINE_URL), 'signed-out catalog prompt should not call Cline')
+  expect(!h.requests.some((request) => request.url.includes('chat_context')), 'signed-out product browsing must not query private products')
 })
 
 await check('ticket section count is explained by the model from live data', async () => {
@@ -191,6 +221,25 @@ await check('a rejected ticket tool call recovers live data before LLM phrasing'
   expect(h.requests.some((request) => request.url.endsWith('/rpc/chat_account_context')), 'rejected tool call did not trigger a live account lookup')
   expect(modelRequests.length === 2, `expected rejected tool call plus LLM phrasing call, got ${modelRequests.length}`)
   expect(JSON.parse(String(modelRequests[1].init?.body)).tool_choice === 'none', 'recovery call should ask the LLM to phrase the fetched result without another tool call')
+})
+
+await check('a missing required tool call is recovered before answering ticket counts', async () => {
+  const h = harness({
+    token: 'admin-token',
+    account: {
+      viewer_is_admin: true,
+      tickets: { total: 6, pending: 3, open: 2, in_progress: 1, resolved: 3 },
+    },
+    omitRequiredTool: true,
+    model: [
+      finalResponse('There are 2 open tickets.', []),
+      finalResponse('There are 2 open support tickets in the store.', ['account:tickets']),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
+  expect(reply.answer === 'There are 2 open support tickets in the store.', reply.answer)
+  expect(reply.sources.some((source) => source.id === 'account:tickets'), 'recovered response lacks a live ticket source')
+  expect(h.requests.some((request) => request.url.endsWith('/rpc/chat_account_context')), 'omitted required tool call did not trigger a live lookup')
 })
 
 await check('open ticket question uses the open count, not the total', async () => {
@@ -257,15 +306,12 @@ await check('pending support count uses exact live aggregates and adds support n
 
 await check('signed-out account questions require sign-in and never query private data', async () => {
   const h = harness({
-    model: [
-      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
-      finalResponse('Please sign in so I can check your tickets.'),
-    ],
+    model: [],
   })
   const reply = await runAssistant({ messages: user('How many tickets do I have?'), apiKey: 'test', runtime: h.runtime })
   expect(reply.link?.path === '/login', 'sign-in button missing')
   expect(!h.requests.some((r) => r.url.includes('chat_account_context')), 'anonymous private query was attempted')
-  expect(h.requests.some((r) => r.url.includes('chat/completions')), 'signed-out response should remain model-generated')
+  expect(!h.requests.some((r) => r.url === CLINE_URL), 'signed-out account response should not depend on Cline')
 })
 
 await check('a model outage preserves the sign-in link for private ticket questions', async () => {
