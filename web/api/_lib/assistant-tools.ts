@@ -89,16 +89,30 @@ async function searchStore(args: Record<string, unknown>, runtime: AssistantRunt
   return payload
 }
 
+const ACCOUNT_SOURCES: Record<string, { id: string; title: string }> = {
+  tickets: { id: 'account:tickets', title: 'Live support ticket data' },
+  orders: { id: 'account:orders', title: 'Live order data' },
+  catalog: { id: 'account:catalog', title: 'Live catalogue and stock data' },
+}
+
+/**
+ * Live figures for the person asking. The database function runs with the caller's own token, so row
+ * level security decides the scope: a customer gets their own records, an admin gets the whole store.
+ * The payload also carries the status vocabulary, so "closed" resolves to whatever the store calls done.
+ */
 async function readAccount(args: Record<string, unknown>, runtime: AssistantRuntime, state: ToolState) {
   const resource = text(args, 'resource', 20)
-  if (!['orders', 'tickets', 'all'].includes(resource)) return { error: 'Resource must be orders, tickets, or all.' }
+  if (!['orders', 'tickets', 'catalog', 'all'].includes(resource)) {
+    return { error: 'Resource must be orders, tickets, catalog, or all.' }
+  }
   if (!runtime.token) {
     state.link = { path: '/login', label: 'Sign in to continue' }
     return { requires_sign_in: true, message: 'Ask the customer to sign in, then try again.' }
   }
-  const result = asRecord(await supabase(runtime, `rpc/chat_account_context`, { p_resource: resource }, true))
-  if (resource !== 'orders') state.sources.set('account:tickets', { id: 'account:tickets', title: 'Support ticket data' })
-  if (resource !== 'tickets') state.sources.set('account:orders', { id: 'account:orders', title: 'Order data' })
+  const result = asRecord(await supabase(runtime, 'rpc/chat_account_context', { p_resource: resource }, true))
+  const available = Object.keys(ACCOUNT_SOURCES).filter((key) => result[key] !== null && result[key] !== undefined)
+  if (available.length === 0) return { error: 'The live figures are unavailable right now. Say so honestly; do not guess.' }
+  for (const key of available) state.sources.set(ACCOUNT_SOURCES[key].id, ACCOUNT_SOURCES[key])
   state.contextText.push(JSON.stringify(result))
   return result
 }

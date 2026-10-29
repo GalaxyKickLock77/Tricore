@@ -61,11 +61,16 @@ export const ASSISTANT_TOOLS = [
     type: 'function',
     function: {
       name: 'read_account',
-      description: 'Read live order and/or support-ticket information visible to the current signed-in user. Use for counts, status, history, tracking, pending tickets, and account questions. RLS gives customers their own data and admins all permitted data.',
+      description:
+        'Live counts, statuses, history and tracking for orders, support tickets and the catalogue, computed in the database for the person asking. Use it for ANY how-many, closed, open, pending, resolved, in-progress, shipped, delivered, cancelled, out-of-stock or recent question. Row level security gives a customer their own records and an admin the whole store; the payload states its scope and the status vocabulary.',
       parameters: {
         type: 'object',
         properties: {
-          resource: { type: 'string', enum: ['orders', 'tickets', 'all'] },
+          resource: {
+            type: 'string',
+            enum: ['orders', 'tickets', 'catalog', 'all'],
+            description: 'tickets for support questions, orders for purchases and delivery, catalog for stock levels, all for a general or store-wide overview.',
+          },
         },
         required: ['resource'],
         additionalProperties: false,

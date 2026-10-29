@@ -36,7 +36,7 @@ export default function AdminSettings() {
   }
 
   return (
-    <Page title="Payment and notification settings" description="Customers pay online through XPay. Money goes straight to your bank account.">
+    <Page title="Payment and notification settings" description="Payment is arranged with each customer on their order's support ticket.">
       <Card className="max-w-xl">
         <CardContent>
           <form onSubmit={save} className="space-y-4">

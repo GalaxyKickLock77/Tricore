@@ -1,6 +1,6 @@
 # Tricore Store
 
-Online payments are handled by XPay (https://xpaygateway.store). Configure `XPAY_API_KEY` on the server; see `web/xpay.env.example`.
+There is no online payment on the site: after an order is placed, the Tricore team confirms it and arranges payment with the customer on that order's support ticket.
 
 React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supabase Cloud (Auth, Postgres, RLS).
 
@@ -28,12 +28,20 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 
 ## AI assistant (chat widget)
 - **Where:** floating chat button on every page. Backend: `web/api/chat.ts` (Vercel serverless function) calling Groq
-  (`openai/gpt-oss-120b`, falling back to `qwen/qwen3.8-27b` then `openai/gpt-oss-20b`; all on Groq's free tier).
-- **RAG:** the function calls the Supabase RPC `chat_context()`, which returns relevant knowledge articles
-  (`kb_articles`, Postgres full-text search; articles with category `core` are always included) plus the live product list.
-  The model may only answer from that context.
-- **Accuracy checks (code, not just the prompt):** the reply must cite sources that exist in the retrieved context, and
-  every price/number in the answer must appear in the context. Otherwise the bot hands the customer to the team.
+  (`openai/gpt-oss-120b`, falling back to `openai/gpt-oss-20b`; both on Groq's free tier). Logic: `web/api/_lib/assistant.ts`,
+  tools in `web/api/_lib/assistant-tools.ts`.
+- **Live tools, no memorised facts:** the model answers only from tools that read the database while it is answering:
+  `search_store` (knowledge articles from `kb_articles` plus the live product list, through the `chat_context()` RPC),
+  `read_account` (live counts, statuses, history and tracking for orders, support tickets and stock, through
+  `chat_account_context()`), `prepare_checkout` (validates stock, places nothing) and `show_page` (a navigation button).
+  Every database call is made with the signed-in person's own token, so Row Level Security decides the scope: a customer
+  gets their own records, an admin gets the whole store. Nothing is looked up in a file of canned answers.
+- **Accuracy checks (code, not just the prompt):** a factual answer must cite sources that came back from a tool, and every
+  price or number in the reply must appear in the data the tool returned. If either check fails, the assistant says it could
+  not verify that and offers the team - it never ships an unverified figure.
+- **Wordings the customer uses** ("closed", "completed", "unpaid", "on the way") are mapped onto real status values by
+  `assistant_status_vocabulary` in `app_config`. Edit that row in the SQL editor to change the vocabulary; no code change:
+  `update public.app_config set value = '<json>' where key = 'assistant_status_vocabulary';`
 - **Human routing (ask first):** the assistant talks like a friendly shop assistant and answers from the knowledge base.
   It cannot change prices, so when a customer wants a lower price, discount, coupon, bulk or special deal, it says so and
   asks "Would you like me to connect you with my team?" (Yes / No buttons). Only a "yes", or an explicit request for a
@@ -42,35 +50,43 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
   Payment, delivery, returns and warranty questions are answered honestly from the knowledge base (the team confirms
   these after the order); the bot never invents them. Unrelated questions get a short friendly redirect.
 - **Setup:**
-  1. Fresh install: run `supabase/chatbot-setup.sql` in the Supabase SQL editor (chatbot migration + v2 + knowledge base).
-     Already installed the first version? Just run `supabase/migrations/20261010010000_chat_context_v2.sql`.
+  1. Fresh install: run `supabase/chatbot-setup.sql` in the Supabase SQL editor (chat tables, context functions,
+     account insight function and knowledge base). Already installed? Run the migrations you are missing, in date order -
+     the assistant needs `20261105000000_chat_assistant.sql` and `20261106000000_chat_account_insights.sql`.
   2. Set `GROQ_API_KEY` in Vercel (Production + Preview, type Sensitive). Never commit it or use a `VITE_` prefix.
-  3. Edit the knowledge base: Supabase Table Editor, `kb_articles` (or edit `supabase/kb/articles.json`,
-     run `node web/scripts/gen-kb-sql.mjs`, and run the generated `supabase/seed_kb.sql`).
-- **Evaluate:** from `web/`: `node --env-file=.env.local scripts/eval-chat.mts` (22 questions against the real model).
+  3. Edit the knowledge base: the admin **Knowledge** page, or Supabase Table Editor on `kb_articles` (or edit
+     `supabase/kb/articles.json`, run `node web/scripts/gen-kb-sql.mjs`, and run the generated `supabase/seed_kb.sql`).
+- **Evaluate:** from `web/`: `node scripts/assistant-check.mts` (offline: tools, guardrails and scope, no model call),
+  `node scripts/eval-chat.mts` (22 catalogue questions against the real model) and
+  `node_modules\.bin\jiti.cmd scripts\live-admin-insights-check.mts` (real admin account: every number the assistant
+  quotes is compared with the database, and a signed-out visitor is checked for leaks). These use free-tier tokens.
 
-### Chat memory, stock awareness and capacity
-- **Conversation state:** for every message the server works out which product is being discussed (from the whole chat plus
-  the product names the browser sends back as `memory`), its stock, and any price the customer proposes. Out-of-stock
-  products are never negotiated: the bot says so first and suggests in-stock alternatives.
-- **Direct answers (no model call):** availability and price of a named product, cheapest / most expensive, price-talk on a
-  known product, greetings, thanks, yes/no to "connect me with the team". These are instant and exact.
+### Conversation state and capacity
+- **Conversation state:** the server keeps the chat plus the product names the browser sends back as `memory`, and the
+  tools see live stock. Out-of-stock products are never negotiated: the assistant says so first and suggests in-stock
+  alternatives.
+- **Store and account questions answered directly:** "how many support tickets were closed", "how many orders need
+  shipping", "how many products are out of stock", "what are my recent orders" - all from live figures, for admins
+  store-wide and for customers their own.
 - **Groq free tier limits (measured):** 8,000 tokens/min and **200,000 tokens/day per model** (a rolling refill of ~139
-  tokens/min). A model-written reply costs about 2.5k tokens, so the free tier supports roughly 250 model replies per day
-  across the three models. Direct answers and the FAQ cache do not use tokens. For real traffic add a payment method in
-  Groq (Developer tier, about $0.0006 per reply for gpt-oss-120b); no code change is needed.
-- **Checks without the model:** `node scripts/logic-check.mts` (from `web/`) tests product matching, price detection, memory
-  and the direct answers. `scripts/eval-chat.mts` runs the question set against the real model (uses free-tier tokens).
+  tokens/min). A tool-using reply costs roughly 2.5k-4k tokens over two model calls, so the free tier supports around
+  100-150 assisted replies per day across the two models. Public FAQ answers are cached for 15 minutes and small talk
+  needs no model call; private or live data is never cached. For real traffic add a payment method in Groq
+  (Developer tier); no code change is needed.
+- **Checks without the model:** `node scripts/assistant-check.mts` (tool use, scope and guardrails) and
+  `node scripts/logic-check.mts` (product matching, price detection, memory) from `web/`.
 
 ### What the assistant can and cannot do (access model)
-- **Can (read only):** public product list and knowledge base; the signed-in customer's OWN recent orders (fetched with the
-  customer's own token, so database rules apply) to answer "where is my order".
+- **Can (read only):** public product list and knowledge base; live counts and status for orders, support tickets and
+  stock; the signed-in customer's OWN recent orders and tickets. An admin gets store-wide figures. Every one of these
+  reads runs with the visitor's own token, so database rules apply and the server never holds a service key here.
 - **Can propose:** an order (product, quantity, total). It appears as a "Confirm your order" card; the order is placed only
   when the customer presses Confirm, using their own signed-in session and the existing `place_order()` function (stock check,
   price snapshot, row level security). A chat message alone can never create an order.
 - **Can request:** a call-back from the team (contact form, only after the customer says yes).
-- **Cannot:** take payments, change prices or give discounts, cancel or edit orders, see other customers' data, use any
-  admin function, or touch products and stock. The server never holds a service key.
+- **Cannot:** take payments, change prices or give discounts, cancel or edit orders, close or reopen tickets, see other
+  customers' data, use any admin write function, or touch products and stock. Staff status only widens what the read
+  functions return; it never grants a write, and the server never holds a service key for the chat.
 
 ### Support tickets (comments and updates)
 - Run `supabase/migrations/20261011000000_ticket_comments.sql` once in the Supabase SQL editor.
@@ -80,22 +96,26 @@ React (Vite + TypeScript + Tailwind) served by Nginx in Docker, backed by Supaba
 - **Customer** (`/tickets`, "Support" in the menu, with a New ticket button): sees their own tickets and the team's updates, and can reply. A reply on a
   resolved ticket reopens it. Visitors who were not signed in get no in-app view; admins email them instead.
 - Comments can only be added through `add_ticket_comment()`, which checks who may write on which ticket.
-- No automatic email notifications are sent yet (that needs an email service such as Resend).
+- Emails go out through the `/api/notify` endpoint once SMTP is configured (see the automation section below). An order ticket does not send a
+  second "new ticket" email, because the order itself already notified you.
 
-## Checkout, GPay payment and shipping
-Flow: **Buy** -> checkout (delivery address) -> order placed (stock reserved) -> pay with GPay / any UPI app -> customer enters the
-UPI transaction ID (UTR) -> admin checks the bank and confirms -> admin ships (courier + tracking) -> delivered.
-- **Setup:** run `supabase/migrations/20261012000000_checkout.sql` in the Supabase SQL editor (also run `seed_kb.sql` again for the
-  updated chatbot knowledge). Then sign in as admin, open **Payment** in the menu and enter your UPI ID.
-- **Currency:** Indian rupees (UPI works only in INR). The numbers in your product list are now shown as rupees.
-- **Statuses:** awaiting_payment, payment_submitted, paid, shipped, delivered, cancelled. Status changes happen only through
-  database functions (`place_order`, `submit_payment`, `cancel_my_order`, `admin_*`), each with its own permission check and a
-  timeline entry the customer can see on My orders.
-- **Admin alerts:** an "Orders" badge counts orders that need action (payment to verify, paid and ready to ship), and a pop-up
-  appears live when an order is placed or a customer submits a payment. There are no email alerts yet (needs an email service).
-- **Important:** a UPI transaction ID typed by a customer is not proof of payment. Always match it against your bank statement
-  before pressing "Confirm payment received". For automatic verification use a payment gateway (Razorpay, Cashfree, PhonePe).
-- The chat assistant can start an order but never places it: the customer finishes address and payment on the checkout page.
+## Checkout, payment and shipping
+Flow: **Buy** -> checkout (delivery address) -> order placed (stock reserved, a support ticket is opened automatically) -> the team confirms the order and
+arranges payment with the customer on that ticket -> admin marks it paid -> admin ships (courier + tracking) -> delivered.
+- **Payment is never taken by the website on its own.** The amount and how to pay are agreed between the team and the customer on the order's support
+  ticket. Never put a payment app, gateway, UPI ID or QR code into `supabase/kb/articles.json` unless checkout really offers it - the assistant repeats the
+  knowledge base as fact.
+- **Setup:** run `supabase/migrations/20261012000000_checkout.sql` and `supabase/migrations/20261107000000_kb_payment_copy.sql` (the current chatbot
+  knowledge) in the Supabase SQL editor. You can edit any article later in **Admin -> Knowledge** without a deploy.
+- **Currency:** Indian rupees. The numbers in your product list are shown as rupees.
+- **Statuses:** awaiting_payment, paid, shipped, delivered, cancelled (plus `payment_submitted` on a few older orders). Status changes happen only through
+  database functions (`place_order`, `cancel_my_order`, `admin_*`), each with its own permission check and a timeline entry the customer can see on My
+  orders. `submit_payment()` belongs to the retired manual-reference flow and no page calls it.
+- **Unpaid orders expire:** `expire_unpaid_orders()` cancels them after the "Cancel unpaid orders after" setting (default 24 hours) and returns the stock.
+  It runs on pg_cron where available, and from the admin Orders page otherwise.
+- **Admin alerts:** an "Orders" badge counts orders that need action (waiting for payment, paid and ready to ship, shipped and to be marked delivered), and
+  a live pop-up appears when an order is placed.
+- The chat assistant can start an order but never places it: the customer finishes the address on the checkout page.
 
 ## Less admin work: automatic cancel, emails and AI help
 **One-time setup**

@@ -36,28 +36,33 @@ const UNAVAILABLE = "I'm having trouble reaching the assistant right now. Would 
 const UNSURE = "I couldn't verify that answer from Tricore's live information. Would you like me to connect you with my team?"
 const FORBIDDEN = /(gsk_[a-z0-9]+|op-[a-z0-9]+|sk-ar-[a-z0-9]+|system prompt|api[_ ]?key)/i
 
-function systemPrompt(name: string | undefined, page: string, signedIn: boolean) {
-  return `You are Tricore IT Solutions' AI shopping and account assistant. Use tools for facts; never guess.
+function systemPrompt(name: string | undefined, page: string, signedIn: boolean, isAdmin: boolean) {
+  return `You are Tricore IT Solutions' AI shopping, account and store assistant.
 
-STATE: ${signedIn ? 'Signed in.' : 'NOT signed in.'} Page: ${page || 'unknown'}.${name ? ` Name: ${name}.` : ''}
+STATE: ${isAdmin ? 'Signed in as an ADMIN of the store (sees every order, ticket and product).' : signedIn ? 'Signed in as a customer.' : 'NOT signed in.'} Page: ${page || 'unknown'}.${name ? ` Name: ${name}.` : ''}
 
-TOOLS:
-- search_store: products, prices, stock, policies, ordering. Always search; never guess from memory.
-- read_account: orders, tickets, counts, status, tracking. Use exact aggregates; pending = open + in_progress.
-- prepare_checkout: after search_store, use exact UUID + quantity. Validates stock. No order placed yet.
-- show_page: /shop if no product; /login if signed-out buy/checkout/orders/tickets.
+TOOLS - call them before you answer; you have no facts of your own:
+- search_store: products, prices, stock, policies, how-to. Never answer such a question from memory.
+- read_account: live counts and status for orders, support tickets and the catalogue. REQUIRED for any "how many", "are there", "what is the status", "recent", "this week/30 days" or ticket/order overview question - including an admin asking about the whole store. The payload says what you may see (viewer_scope), gives figures per status, and carries status_vocabulary mapping everyday words (closed, completed, unpaid, on the way...) onto real status values.
+- prepare_checkout: after search_store, with the exact product id and quantity. Validates stock. Places no order.
+- show_page: adds a navigation button. Use it when the page is the natural next step (admin: /admin/support, /admin/orders, /admin/products; customer: /orders, /tickets; visitor: /login or /shop).
 
 RULES:
-- Signed-out buy/checkout/orders/tickets → show_page /login, ask to sign in.
-- Never place orders, take payments, change prices/stock/ticket status.
-- Discounts/unavailable details → offer_team, ask first.
-- No inventing specs, numbers, or policies.
+- Every fact comes from a tool result in this conversation. Never say you cannot see counts, tickets, orders or stock without having called the tool, and never send someone to a page instead of answering when read_account can answer them.
+- Copy numbers exactly as the tools returned them; choose the right status using status_vocabulary and the definitions in the payload (for example pending is defined there). Do not invent percentages, averages, rates or dates, and do not do arithmetic on figures you were not given.
+- Stay inside viewer_scope: an admin's answer may use store-wide data; a customer's answer may use only their own records and public products. Never reveal another customer's details.
+- Signed-out buy/checkout/orders/tickets requests -> call show_page /login and ask them to sign in.
+- Never place orders, take payments, change prices, stock or ticket status.
+- Discounts, deals, bulk pricing or anything you cannot do -> action offer_team and ask first.
+- Missing detail (a spec, shipping charge, delivery time) -> say you do not have it and that the team confirms after the order. Do not guess.
+- Off-topic (poems, coding, trivia, news, homework) -> intent offtopic, short friendly redirect, do not do the task.
+- Never ask for passwords, OTPs, card or bank details.
 
-STYLE: friendly, concise, 1-5 sentences. Keep names/prices exact. Never claim to be human.
+STYLE: friendly and natural, like a knowledgeable shop assistant. 1-5 short sentences. Keep product names, statuses and prices exact. Answer first, then at most one useful follow-up. Reply in the customer's language (English, Hindi, Telugu, Tamil...). Never claim to be human; if asked, say you are Tricore's virtual assistant.
 
 OUTPUT: ONE JSON object, no markdown:
-{"intent":"greeting|offtopic|question","action":"answer|offer_team|handoff","answer":"text","handoff_reason":"","sources":["ids"]}
-Greetings/small talk/off-topic may have empty sources. Server adds buttons from tool results.`
+{"intent":"greeting|offtopic|question","action":"answer|offer_team|handoff","answer":"text","handoff_reason":"","sources":["ids from the tool results you used"]}
+Greetings and small talk may have empty sources. The server adds buttons and checks every number against the tool results.`
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -112,7 +117,6 @@ async function requestOnce(
       // gpt-oss sometimes writes its answer as a pseudo tool call named "JSON". Groq rejects it with 400, but the
       // rejected generation is in error.failed_generation, so the answer payload can be used directly.
       const recovered = recoverPseudoJson(raw)
-      console.error('[DEBUG] recovered:', recovered ? recovered.slice(0, 100) : 'null')
       if (recovered) return { message: { role: 'assistant', content: recovered } }
       // A malformed tool call (400 tool_use_failed) is random sampling noise, so one more try usually works.
       const malformed = res.status === 400 && raw.includes('tool_use_failed')
@@ -174,13 +178,15 @@ export async function runAssistant(opts: {
   name?: string
   page?: string
   memory?: string[]
+  /** True when the caller's own token passes the is_admin() check; the database still decides what they can read. */
+  isAdmin?: boolean
   runtime: AssistantRuntime
 }): Promise<AssistantReply> {
   const { messages, apiKey, runtime } = opts
   const memory = opts.memory?.slice(-5)
   const state = emptyToolState()
   const conversation: AssistantModelMessage[] = [
-    { role: 'system', content: systemPrompt(opts.name, (opts.page ?? '').slice(0, 100), !!runtime.token) },
+    { role: 'system', content: systemPrompt(opts.name, (opts.page ?? '').slice(0, 100), !!runtime.token, !!opts.isAdmin) },
     ...messages.slice(-12).map((m) => ({ role: m.role, content: m.content })),
   ]
   let usedModel: string | undefined
@@ -230,7 +236,7 @@ export async function runAssistant(opts: {
       ? parsed.intent as BotReply['intent']
       : 'question'
     let action = (['answer', 'offer_team', 'handoff'] as const).includes(parsed.action as never)
-      ? parsed.action as 'answer' | 'offer_team' | 'handoff'
+      ? (parsed.action as BotReply['action'])
       : 'answer'
     const clarifying = /\?\s*$/.test(answer) && !/[\d$₹]/.test(answer)
     const needsSources = intent === 'question' && !clarifying && action !== 'handoff' && !state.link
@@ -247,13 +253,20 @@ export async function runAssistant(opts: {
       .map((id) => state.sources.get(id)!)
     if (needsSources && sources.length === 0) sources = [...state.sources.values()].slice(0, 8)
     if (state.order) action = 'confirm_order'
+    let text = answer
+    // The contact form only opens on an explicit request (handled before the model runs) or a "yes" to
+    // this offer, so an unprompted handoff becomes a question first.
+    if (action === 'handoff') {
+      action = 'offer_team'
+      if (!/\?\s*$/.test(text)) text = `${text} Would you like me to connect you with my team?`
+    }
     return {
       action,
-      answer,
+      answer: text,
       intent: action === 'answer' ? intent : 'question',
       sources: action === 'answer' && intent !== 'question' ? [] : sources,
       verified: true,
-      handoffReason: action === 'offer_team' || action === 'handoff'
+      handoffReason: action === 'offer_team'
         ? String(parsed.handoff_reason ?? '').slice(0, 300)
         : undefined,
       model: usedModel,

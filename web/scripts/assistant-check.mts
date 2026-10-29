@@ -30,6 +30,7 @@ interface HarnessOptions {
   token?: string
   product?: { id: string; name: string; price: number; stock: number; is_active: boolean }
   account?: unknown
+  accountFails?: boolean
 }
 function harness(options: HarnessOptions) {
   const model = [...options.model]
@@ -45,6 +46,7 @@ function harness(options: HarnessOptions) {
       return new Response(JSON.stringify({ articles: [ARTICLE], products: [PRODUCT], total_products: 1 }), { status: 200 })
     }
     if (target.endsWith('/rest/v1/rpc/chat_account_context')) {
+      if (options.accountFails) return new Response('{"error":"relation does not exist"}', { status: 500 })
       return new Response(JSON.stringify(options.account ?? {}), { status: 200 })
     }
     if (target.includes('/rest/v1/products?')) {
@@ -228,6 +230,86 @@ await check('off-topic requests get a redirect with no tool calls', async () => 
   const reply = await runAssistant({ messages: user('Write me a poem about the moon'), apiKey: 'test', runtime: h.runtime })
   expect(reply.intent === 'offtopic', `expected offtopic intent, got ${reply.intent}`)
   expect(!reply.order && reply.action !== 'confirm_order', 'off-topic produced checkout')
+})
+
+await check('"closed tickets" uses the live resolved figure and its own vocabulary', async () => {
+  const h = harness({
+    token: 'admin-token',
+    account: {
+      viewer_is_admin: true,
+      viewer_scope: 'admin: every order, ticket and product in the store',
+      status_vocabulary: { ticket: { aliases: { closed: 'resolved', pending: 'open + in_progress' } } },
+      tickets: {
+        total: 12, pending: 4, open: 2, in_progress: 2, resolved: 8,
+        by_status: [{ status: 'resolved', count: 8 }, { status: 'open', count: 2 }, { status: 'in_progress', count: 2 }],
+      },
+      orders: null, catalog: null,
+    },
+    model: [
+      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
+      finalResponse('8 tickets have been closed (resolved). 4 are still in play: 2 open and 2 in progress.', ['account:tickets']),
+    ],
+  })
+  const reply = await runAssistant({
+    messages: user('how many support tickets were closed'),
+    apiKey: 'test', runtime: h.runtime, isAdmin: true, page: '/admin/support',
+  })
+  expect(/\b8\b/.test(reply.answer), `closed count missing: ${reply.answer}`)
+  expect(!/can.?t|don.?t have|check (your|the) (my tickets|admin support)/i.test(reply.answer), `deflected instead of answering: ${reply.answer}`)
+  expect(reply.sources.some((s) => s.id === 'account:tickets'), 'answer was not attributed to the live ticket data')
+  expect(h.requests.some((r) => r.url.endsWith('/rpc/chat_account_context')), 'no live query was made for a count question')
+})
+
+await check('store-wide figures stay available to an admin, and the scope travels with the answer', async () => {
+  const h = harness({
+    token: 'admin-token',
+    account: {
+      viewer_is_admin: true, viewer_scope: 'admin: every order, ticket and product in the store',
+      orders: { total: 15, needs_action: 3, delivered: 6 },
+      tickets: { total: 12, resolved: 8 },
+      catalog: { products_out_of_stock: 2, products_low_stock: 1 },
+      status_vocabulary: { order: { needs_action_definition: 'payment_submitted (to verify) + paid (to ship)' } },
+    },
+    model: [
+      toolResponse([{ name: 'read_account', args: { resource: 'all' } }]),
+      finalResponse('Across the store: 12 tickets (8 closed), 15 orders with 3 needing action, and 2 products out of stock.', ['account:orders', 'account:tickets', 'account:catalog']),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('give me an overview of the store'), apiKey: 'test', runtime: h.runtime, isAdmin: true, page: '/admin/orders' })
+  expect(reply.sources.length === 3, `expected three live sources, got ${JSON.stringify(reply.sources)}`)
+  expect(!h.requests.some((r) => r.url.includes('/rest/v1/orders?')), 'store overview must not read tables directly, only the scope-checked function')
+})
+
+await check('a customer is never given store-wide counts', async () => {
+  const h = harness({
+    token: 'customer-token',
+    account: {
+      viewer_is_admin: false, viewer_scope: "customer: only this account's own orders and tickets",
+      tickets: { total: 1, resolved: 1, pending: 0 },
+    },
+    model: [
+      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
+      finalResponse('You have 1 ticket and it is closed. Store-wide figures are for our team.', ['account:tickets']),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('how many tickets has the store closed in total?'), apiKey: 'test', runtime: h.runtime })
+  expect(reply.answer === 'You have 1 ticket and it is closed. Store-wide figures are for our team.', `wrong scope answer: ${reply.answer}`)
+  const req = h.requests.find((r) => r.url.endsWith('/rpc/chat_account_context'))
+  expect((req?.init?.headers as Record<string, string>).Authorization === 'Bearer customer-token', 'account data must be read with the caller token only')
+})
+
+await check('a database failure produces honesty, never a made-up count', async () => {
+  const h = harness({
+    token: 'admin-token',
+    accountFails: true,
+    model: [
+      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
+      finalResponse('17 tickets are closed.', ['account:tickets']),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('how many support tickets were closed?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
+  expect(reply.action === 'offer_team', `expected the team offer, got ${reply.action}: ${reply.answer}`)
+  expect(!/\d/.test(reply.answer), `a number was claimed with no live data: ${reply.answer}`)
 })
 
 console.log(failures ? `RESULT: ${failures} FAILED` : 'RESULT: ALL ASSISTANT CHECKS PASSED')

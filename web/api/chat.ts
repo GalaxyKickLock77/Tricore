@@ -1,5 +1,5 @@
-import { answerQuestion, offer, routeFast, wantsOrderStatus, type ChatContext, type ChatMessage, type OrderRow } from './_lib/core.js'
-import { FALLBACK_ARTICLES } from './_lib/fallback-kb.js'
+import { routeFast, type ChatMessage } from './_lib/core.js'
+import { runAssistant } from './_lib/assistant.js'
 
 const hits = new Map<string, number[]>()
 function limited(ip: string): boolean {
@@ -11,9 +11,11 @@ function limited(ip: string): boolean {
   return recent.length > 15
 }
 
+// Public, evergreen knowledge-base answers, so a busy FAQ does not burn the model's free-tier tokens.
+// Never private or live data: see the cache rule where it is used.
 const cache = new Map<string, { at: number; reply: Record<string, unknown> }>()
 const CACHE_MS = 15 * 60_000
-const norm = (t: string) => t.toLowerCase().replace(/[^\\p{L}\\p{N}]+/gu, ' ').trim()
+const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 
 function clean(input: unknown): ChatMessage[] | null {
   if (!Array.isArray(input) || input.length === 0) return null
@@ -41,10 +43,17 @@ export async function POST(request: Request): Promise<Response> {
 
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
   if (limited(ip)) {
-    return json(offer('You are sending messages very quickly. Give me a moment, or would you like me to connect you with my team?', 'throttled'))
+    return json({
+      action: 'offer_team',
+      intent: 'question',
+      answer: 'You are sending messages very quickly. Give me a moment, or would you like me to connect you with my team?',
+      sources: [],
+      verified: true,
+      handoffReason: 'throttled',
+    })
   }
 
-  let body: { messages?: unknown; name?: unknown; memory?: unknown }
+  let body: { messages?: unknown; name?: unknown; memory?: unknown; page?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -54,23 +63,11 @@ export async function POST(request: Request): Promise<Response> {
   if (!messages) return json({ error: 'Invalid request' }, 400)
 
   const rawName = typeof body.name === 'string' ? body.name.trim().split(/\s+/)[0] : ''
-  const name = /^[\\p{L}'-]{2,24}$/u.test(rawName) ? rawName : undefined
+  const name = /^[\p{L}'-]{2,24}$/u.test(rawName) ? rawName : undefined
+  const page = typeof body.page === 'string' ? body.page.trim().slice(0, 100) : ''
+  // The customer's own token. Every database call the tools make runs under it, so row level security
+  // decides what this person may see; the server never holds a secret key here.
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || undefined
-
-  // Determine if the user is an admin (via is_admin RPC, which checks the current user's role).
-  let isAdmin = false
-  if (token) {
-    try {
-      const profRes = await fetch(`${supaUrl}/rest/v1/rpc/is_admin`, {
-        method: 'POST',
-        headers: { apikey: supaKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: '{}',
-      })
-      if (profRes.ok) {
-        isAdmin = (await profRes.json()) === true
-      }
-    } catch { /* ignore */ }
-  }
 
   const memory = (Array.isArray(body.memory) ? body.memory : [])
     .filter((n): n is string => typeof n === 'string')
@@ -78,49 +75,49 @@ export async function POST(request: Request): Promise<Response> {
     .filter(Boolean)
     .slice(-5)
 
+  // Small talk and an explicit request for a person are settled without the model.
   const fast = routeFast(messages, name)
   if (fast) return json({ ...fast, memory })
 
-  const query = [...memory, ...messages.slice(-4).map((m) => m.content.slice(0, 300))].join(' ').slice(0, 900)
-
-  let context: ChatContext
-  try {
-    const res = await fetch(`${supaUrl}/rest/v1/rpc/chat_context`, {
-      method: 'POST',
-      headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_query: query }),
-    })
-    if (!res.ok) throw new Error(String(res.status))
-    context = (await res.json()) as ChatContext
-  } catch {
-    context = { articles: FALLBACK_ARTICLES, products: [] }
+  // A repeated public FAQ question gets the stored answer instead of model tokens.
+  const cacheKey = messages.length === 1 && memory.length === 0 && !name && !token ? norm(messages[0].content) : null
+  if (cacheKey) {
+    const hit = cache.get(cacheKey)
+    if (hit && Date.now() - hit.at < CACHE_MS) return json(hit.reply)
   }
 
-  const lastText = messages[messages.length - 1].content
-  if (wantsOrderStatus(lastText)) {
-    context.orders = null
-    if (token) {
-      try {
-        const r = await fetch(
-          `${supaUrl}/rest/v1/orders?select=id,quantity,unit_price,status,created_at,courier,tracking_number,products(name)&order=created_at.desc&limit=10`,
-          { headers: { apikey: supaKey, Authorization: `Bearer ${token}` } },
-        )
-        if (r.ok) context.orders = (await r.json()) as OrderRow[]
-      } catch {
-        context.orders = null
-      }
-    }
+  // Staff status is read with the customer's own token through is_admin(); it only chooses the wording of
+  // the instructions. The database policies, not this flag, decide which rows the tools can return.
+  let isAdmin = false
+  if (token) {
+    try {
+      const res = await fetch(`${supaUrl}/rest/v1/rpc/is_admin`, {
+        method: 'POST',
+        headers: { apikey: supaKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      if (res.ok) isAdmin = (await res.json()) === true
+    } catch { /* ignore */ }
   }
 
-  const cacheKey = messages.length === 1 && memory.length === 0 && !name ? norm(messages[0].content) : null
-  const hit = cacheKey ? cache.get(cacheKey) : undefined
-  if (hit && Date.now() - hit.at < CACHE_MS) return json(hit.reply)
+  const reply = await runAssistant({
+    messages,
+    apiKey,
+    name,
+    page,
+    memory,
+    isAdmin,
+    runtime: { supaUrl, supaKey, token, fetchImpl: fetch },
+  })
 
-  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name, signedIn: !!token, isAdmin, memory })
-  const faqOnly = Array.isArray(reply.sources) && reply.sources.length > 0 && reply.sources.every((x) => !/^p\d+$/.test(x.id))
-  if (cacheKey && _model && faqOnly && reply.action === 'answer' && reply.intent === 'question' && reply.verified) {
+  // Only a signed-out question answered purely from a knowledge article may be reused: nothing personal,
+  // nothing live. Ticket, order and stock figures always go back to the database.
+  const publicFaq =
+    reply.action === 'answer' && reply.intent === 'question' && reply.verified && !reply.link && !reply.order &&
+    reply.sources.length > 0 && reply.sources.every((s) => !s.id.includes(':') && !/^p\d+$/.test(s.id))
+  if (cacheKey && publicFaq) {
     if (cache.size > 300) cache.clear()
-    cache.set(cacheKey, { at: Date.now(), reply: { ...reply } })
+    cache.set(cacheKey, { at: Date.now(), reply: { ...reply } as unknown as Record<string, unknown> })
   }
   return json(reply)
 }
