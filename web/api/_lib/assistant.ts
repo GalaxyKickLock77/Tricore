@@ -179,11 +179,33 @@ function parseArgs(raw: string): unknown {
   try { return JSON.parse(raw) } catch { return {} }
 }
 
-function requiredToolArgs(question: string, tool: string, signedIn = false): Record<string, unknown> {
+function isPurchaseRequest(question: string): boolean {
+  const asksAboutExistingOrder = /\b(my order|order status|track|tracking|cancel|refund|where is my order|latest order|recent order)\b/i.test(question)
+  return /\b(buy|purchase|order|checkout)\b/i.test(question) && !asksAboutExistingOrder
+}
+
+function hasNamedProduct(question: string, state: ReturnType<typeof emptyToolState>): boolean {
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const normalizedQuestion = normalize(question)
+  return [...state.sources.values()].some((source) =>
+    source.id.startsWith('product:') && normalizedQuestion.includes(normalize(source.title)),
+  )
+}
+
+function requiredToolArgs(question: string, tool: string, signedIn = false, state?: ReturnType<typeof emptyToolState>): Record<string, unknown> {
   if (tool === 'show_page') return signedIn
     ? { page: '/shop', label: 'Choose a product' }
     : { page: '/login', label: 'Sign in to continue' }
   if (tool === 'search_store') return { query: question.slice(-400) }
+  if (tool === 'prepare_checkout') {
+    const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    const normalizedQuestion = normalize(question)
+    const product = [...(state?.sources.values() ?? [])].find((source) =>
+      source.id.startsWith('product:') && normalizedQuestion.includes(normalize(source.title)),
+    )
+    const quantity = /\b(?:buy|purchase|order|checkout)\s+(\d+)\b/i.exec(question)
+    return { product_id: product?.id ?? '', quantity: quantity ? Number(quantity[1]) : 1 }
+  }
   if (tool === 'read_account') {
     const resource = /\b(tickets?|support requests?|support cases?)\b/i.test(question)
       ? 'tickets'
@@ -203,8 +225,7 @@ function requiredToolForQuestion(question: string, signedIn: boolean): string | 
     /\bdo you (have|sell|carry|stock|offer)\b/i.test(question)
   if (!signedIn && (needsAccount || asksAboutProducts)) return 'show_page'
   if (signedIn && /\bcheckout\b\s*[.!?]*$/i.test(question)) return 'show_page'
-  const asksAboutExistingOrder = /\b(my order|order status|track|tracking|cancel|refund|where is my order|latest order|recent order)\b/i.test(question)
-  if (/\b(buy|purchase|order|checkout)\b/i.test(question) && !asksAboutExistingOrder) return 'search_store'
+  if (isPurchaseRequest(question)) return 'search_store'
   if (/\b(tickets?|support requests?|support cases?)\b/i.test(question)) return 'read_account'
   const asksForLiveFigures = /\b(how many|how much|number of|count|are there|what(?:'s| is) the status|recent|this week|this month)\b/i.test(question)
   if (asksForLiveFigures && /\b(tickets?|support requests?|orders?|products?|stock)\b/i.test(question)) return 'read_account'
@@ -240,6 +261,7 @@ export async function runAssistant(opts: {
   // Signed-out buy/checkout requests must always get the sign-in button, so the first round is forced to call show_page.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
   const requiredTool = requiredToolForQuestion(lastUser, !!runtime.token)
+  const isPurchase = isPurchaseRequest(lastUser)
   if (!runtime.token && requiredTool === 'show_page') {
     const content = await executeAssistantTool('show_page', requiredToolArgs(lastUser, requiredTool), runtime, state)
     if (JSON.parse(content).path === '/login' && state.link) {
@@ -250,22 +272,29 @@ export async function runAssistant(opts: {
     }
   }
   for (let round = 0; round < 3; round++) {
-    const forced = round === 0 ? requiredTool : undefined
+    const forced = round === 0
+      ? requiredTool
+      : round === 1 && isPurchase && hasNamedProduct(lastUser, state)
+        ? 'prepare_checkout'
+        : undefined
     let result = await callModel(apiKey, conversation, runtime.fetchImpl, round < 2, forced)
-    const calledRequiredTool = result.message && toolCalls(result.message).some((call) => call.function.name === requiredTool)
-    if (round === 0 && requiredTool && !calledRequiredTool) {
-      const args = requiredToolArgs(lastUser, requiredTool, !!runtime.token)
+    const calledRequiredTool = result.message && forced && toolCalls(result.message).some((call) => call.function.name === forced)
+    if (forced && !calledRequiredTool) {
+      const args = requiredToolArgs(lastUser, forced, !!runtime.token, state)
       const call: AssistantToolCall = {
         id: 'server-tool-recovery',
         type: 'function',
-        function: { name: requiredTool, arguments: JSON.stringify(args) },
+        function: { name: forced, arguments: JSON.stringify(args) },
       }
       const content = await executeAssistantTool(call.function.name, args, runtime, state)
       conversation.push(
         { role: 'assistant', content: null, tool_calls: [call] },
         { role: 'tool', tool_call_id: call.id, content },
       )
-      result = await callModel(apiKey, conversation, runtime.fetchImpl, false)
+      const checkoutTool = requiredTool === 'search_store' && isPurchase && hasNamedProduct(lastUser, state)
+        ? 'prepare_checkout'
+        : undefined
+      result = await callModel(apiKey, conversation, runtime.fetchImpl, !!checkoutTool, checkoutTool)
     }
     sawRateLimit ||= result.rateLimited
     if (!result.message) {

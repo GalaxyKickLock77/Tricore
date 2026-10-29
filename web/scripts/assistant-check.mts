@@ -31,10 +31,12 @@ interface HarnessOptions {
   model: unknown[]
   token?: string
   product?: { id: string; name: string; price: number; stock: number; is_active: boolean }
+  catalogProduct?: { id: string; name: string; price_usd: number; availability: string; description: string }
   account?: unknown
   accountFails?: boolean
   toolCallFails?: boolean
   omitRequiredTool?: boolean
+  omitToolCallAt?: number
   modelFails?: boolean
 }
 function harness(options: HarnessOptions) {
@@ -47,7 +49,8 @@ function harness(options: HarnessOptions) {
       if (options.modelFails) {
         return new Response(JSON.stringify({ error: 'model unavailable' }), { status: 401 })
       }
-      if (options.omitRequiredTool && requests.filter((request) => request.url === target).length === 1) {
+      const requestNumber = requests.filter((request) => request.url === target).length
+      if ((options.omitRequiredTool && requestNumber === 1) || options.omitToolCallAt === requestNumber) {
         if (!model.length) throw new Error('Unexpected extra model call')
         return modelBody(model.shift())
       }
@@ -58,7 +61,7 @@ function harness(options: HarnessOptions) {
       return modelBody(model.shift())
     }
     if (target.endsWith('/rest/v1/rpc/chat_context')) {
-      return new Response(JSON.stringify({ articles: [ARTICLE], products: [PRODUCT], total_products: 1 }), { status: 200 })
+      return new Response(JSON.stringify({ articles: [ARTICLE], products: [options.catalogProduct ?? PRODUCT], total_products: 1 }), { status: 200 })
     }
     if (target.endsWith('/rest/v1/rpc/chat_account_context')) {
       if (options.accountFails) return new Response('{"error":"relation does not exist"}', { status: 500 })
@@ -147,6 +150,7 @@ await check('a bare order request after catalog browsing looks up the live produ
   const h = harness({
     token: 'customer-token',
     product: { id: PRODUCT_ID, name: 'Sample Gadget', price: 24.5, stock: 17, is_active: true },
+    catalogProduct: { id: `product:${PRODUCT_ID}`, name: 'Sample Gadget', price_usd: 24.5, availability: 'in stock', description: 'Demo device' },
     model: [
       toolResponse([{ name: 'search_store', args: { query: 'order Sample Gadget' } }]),
       toolResponse([{ name: 'prepare_checkout', args: { product_id: PRODUCT_ID, quantity: 1 } }]),
@@ -162,10 +166,38 @@ await check('a bare order request after catalog browsing looks up the live produ
     apiKey: 'test', runtime: h.runtime,
   })
   const firstModelRequest = h.requests.find((request) => request.url === ZRO_URL)
+  const modelRequests = h.requests.filter((request) => request.url === ZRO_URL)
   const body = JSON.parse(String(firstModelRequest?.init?.body))
+  const checkoutBody = JSON.parse(String(modelRequests[1]?.init?.body))
   expect(body.tool_choice?.function?.name === 'search_store', 'bare order request did not force a live product lookup')
+  expect(checkoutBody.tool_choice?.function?.name === 'prepare_checkout', 'named purchase did not force live checkout validation')
   expect(reply.action === 'confirm_order', `validated order did not produce checkout: ${reply.action}`)
   expect(reply.order?.product_id === PRODUCT_ID, 'checkout proposal used the wrong product')
+})
+
+await check('a missing checkout tool call recovers using the live product UUID', async () => {
+  const h = harness({
+    token: 'customer-token',
+    product: { id: PRODUCT_ID, name: 'Sample Gadget', price: 24.5, stock: 17, is_active: true },
+    catalogProduct: { id: `product:${PRODUCT_ID}`, name: 'Sample Gadget', price_usd: 24.5, availability: 'in stock', description: 'Demo device' },
+    omitToolCallAt: 2,
+    model: [
+      toolResponse([{ name: 'search_store', args: { query: 'order Sample Gadget' } }]),
+      finalResponse('Your Sample Gadget checkout is ready.', [`product:${PRODUCT_ID}`]),
+      finalResponse('Your Sample Gadget checkout is ready.', [`product:${PRODUCT_ID}`]),
+    ],
+  })
+  const reply = await runAssistant({
+    messages: [
+      { role: 'user', content: 'What do you sell?' },
+      { role: 'assistant', content: 'Sample Gadget is in our catalog.' },
+      { role: 'user', content: 'order Sample Gadget' },
+    ],
+    apiKey: 'test', runtime: h.runtime,
+  })
+  expect(reply.action === 'confirm_order', `missing checkout tool did not recover: ${reply.action}`)
+  expect(reply.order?.product_id === PRODUCT_ID, 'recovered checkout did not use the catalog UUID')
+  expect(h.requests.some((request) => request.url.includes(`/products?id=eq.${PRODUCT_ID}`)), 'recovery did not validate the product against Supabase')
 })
 
 await check('a named product question forces the live catalog tool', async () => {
