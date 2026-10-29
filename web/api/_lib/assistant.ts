@@ -28,7 +28,8 @@ interface ModelResult {
 
 // Assistant-only model order: cheapest first (greenference gpt-oss-20b), then groq gpt-oss-120b for quality.
 const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'nvidia/nemotron-3.5-super-vl-120b-a12b', extra: {} },
+  { id: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
+  { id: 'openai/gpt-oss-20b', extra: { reasoning_effort: 'low' } },
 ]
 
 const UNAVAILABLE = "I'm having trouble reaching the assistant right now. Would you like me to connect you with my team?"
@@ -87,7 +88,7 @@ async function requestOnce(
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20_000)
   try {
-    const res = await fetchImpl('https://api.anyrouter.dev/api/v1/chat/completions', {
+    const res = await fetchImpl('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -95,9 +96,7 @@ async function requestOnce(
         messages,
         // Keep the tools list even when tools are disabled: without it gpt-oss emits a fake "json" tool call and Groq returns 400.
         tools: ASSISTANT_TOOLS,
-        tool_choice: forceTool
-          ? { type: 'function', function: { name: forceTool } }
-          : allowTools ? 'auto' : 'none',
+        tool_choice: allowTools ? 'required' : 'none',
         parallel_tool_calls: true,
         temperature: 0.2,
         max_completion_tokens: 2000,
@@ -113,6 +112,7 @@ async function requestOnce(
       // gpt-oss sometimes writes its answer as a pseudo tool call named "JSON". Groq rejects it with 400, but the
       // rejected generation is in error.failed_generation, so the answer payload can be used directly.
       const recovered = recoverPseudoJson(raw)
+      console.error('[DEBUG] recovered:', recovered ? recovered.slice(0, 100) : 'null')
       if (recovered) return { message: { role: 'assistant', content: recovered } }
       // A malformed tool call (400 tool_use_failed) is random sampling noise, so one more try usually works.
       const malformed = res.status === 400 && raw.includes('tool_use_failed')

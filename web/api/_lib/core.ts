@@ -54,7 +54,9 @@ export interface BotReply {
 // Free-tier models on Groq, best accuracy first. Each model has its own rate limit, so the
 // list doubles as a fallback chain when one is throttled.
 export const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'nvidia/nemotron-3.5-super-vl-120b-a12b', extra: {} },
+  { id: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
+  { id: 'qwen/qwen3.8-27b', extra: { reasoning_effort: 'none' } },
+  { id: 'openai/gpt-oss-20b', extra: { reasoning_effort: 'low' } },
 ]
 
 const MAX_PRODUCTS_IN_PROMPT = 20
@@ -220,7 +222,7 @@ export async function callGroq(
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20000)
   try {
-    const res = await fetchImpl('https://api.anyrouter.dev/api/v1/chat/completions', {
+    const res = await fetchImpl('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
