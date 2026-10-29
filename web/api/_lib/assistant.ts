@@ -1,4 +1,6 @@
 import {
+  CLINE_CHAT_COMPLETIONS_URL,
+  MODELS,
   extractJson,
   numbersAreGrounded,
   offer,
@@ -24,13 +26,8 @@ interface ModelResult {
   message?: ModelMessage
   model?: string
   rateLimited: boolean
+  toolCallFailed?: boolean
 }
-
-// Assistant-only model order: cheapest first (greenference gpt-oss-20b), then groq gpt-oss-120b for quality.
-const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
-  { id: 'openai/gpt-oss-20b', extra: { reasoning_effort: 'low' } },
-]
 
 const UNAVAILABLE = "I'm having trouble reaching the assistant right now. Would you like me to connect you with my team?"
 const UNSURE = "I couldn't verify that answer from Tricore's live information. Would you like me to connect you with my team?"
@@ -92,26 +89,25 @@ async function requestOnce(
   fetchImpl: typeof fetch,
   allowTools: boolean,
   forceTool?: string,
-): Promise<{ message?: ModelMessage; status?: number; retryable?: boolean; retryAfterMs?: number }> {
+): Promise<{ message?: ModelMessage; status?: number; retryable?: boolean; retryAfterMs?: number; toolCallFailed?: boolean }> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20_000)
   try {
-    const res = await fetchImpl('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetchImpl(CLINE_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: model.id,
         messages,
-        // Keep the tools list even when tools are disabled: without it gpt-oss emits a fake "json" tool call and Groq returns 400.
+        // Keep the tools list even when tools are disabled for providers that validate tool declarations.
         tools: ASSISTANT_TOOLS,
         tool_choice: allowTools
           ? forceTool
             ? { type: 'function', function: { name: forceTool } }
             : 'required'
           : 'none',
-        parallel_tool_calls: true,
         temperature: 0.2,
-        max_completion_tokens: 2000,
+        max_tokens: 768,
         ...model.extra,
       }),
       signal: ctl.signal,
@@ -121,8 +117,7 @@ async function requestOnce(
       const raw = await res.text().catch(() => '')
       const detail = raw.replace(/\s+/g, ' ').slice(0, 300)
       console.warn(`[assistant] ${model.id} HTTP ${res.status} retry-after=${res.headers.get('retry-after') ?? '-'} ${detail}`)
-      // gpt-oss sometimes writes its answer as a pseudo tool call named "JSON". Groq rejects it with 400, but the
-      // rejected generation is in error.failed_generation, so the answer payload can be used directly.
+      // Some OpenAI-compatible providers include the attempted output in failed_generation.
       const recovered = recoverPseudoJson(raw)
       if (recovered) return { message: { role: 'assistant', content: recovered } }
       // A malformed tool call (400 tool_use_failed) is random sampling noise, so one more try usually works.
@@ -130,10 +125,16 @@ async function requestOnce(
       // A daily token limit (TPD) does not clear in seconds, so do not retry it on this model.
       const dailyLimit = res.status === 429 && /per day|TPD/.test(raw)
       const retryable = malformed || (!dailyLimit && (res.status === 429 || res.status >= 500))
-      return { status: res.status, retryable, retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined }
+      return {
+        status: res.status,
+        retryable,
+        retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined,
+        toolCallFailed: malformed,
+      }
     }
-    const data = await res.json() as { choices?: { message?: ModelMessage }[] }
-    return { message: data.choices?.[0]?.message }
+    const envelope = await res.json() as { data?: { choices?: { message?: ModelMessage }[] }; choices?: { message?: ModelMessage }[] }
+    const choices = envelope.data?.choices ?? envelope.choices
+    return { message: choices?.[0]?.message }
   } catch {
     return {}
   } finally {
@@ -155,6 +156,7 @@ async function callModel(
       const result = await requestOnce(apiKey, model, messages, fetchImpl, allowTools, forceTool)
       if (result.message) return { message: result.message, model: model.id, rateLimited }
       if (result.status === 429) rateLimited = true
+      if (result.toolCallFailed && forceTool) return { rateLimited, toolCallFailed: true }
       if (!result.retryable || attempt === 2) break
       // Wait for Retry-After when given, otherwise back off 1.5s, 3s. Keep the total wait short.
       await sleep(Math.min(result.retryAfterMs ?? 1500 * 2 ** attempt, 6000))
@@ -173,6 +175,22 @@ function toolCalls(message: ModelMessage): AssistantToolCall[] {
 
 function parseArgs(raw: string): unknown {
   try { return JSON.parse(raw) } catch { return {} }
+}
+
+function requiredToolArgs(question: string, tool: string): Record<string, unknown> {
+  if (tool === 'show_page') return { page: '/login', label: 'Sign in to continue' }
+  if (tool === 'search_store') return { query: question.slice(-400) }
+  if (tool === 'read_account') {
+    const resource = /\b(tickets?|support requests?|support cases?)\b/i.test(question)
+      ? 'tickets'
+      : /\b(orders?|purchases?|deliveries)\b/i.test(question)
+        ? 'orders'
+        : /\b(products?|stock|inventory)\b/i.test(question)
+          ? 'catalog'
+          : 'all'
+    return { resource }
+  }
+  return {}
 }
 
 function requiredToolForQuestion(question: string, signedIn: boolean): string | undefined {
@@ -214,9 +232,30 @@ export async function runAssistant(opts: {
   const requiredTool = requiredToolForQuestion(lastUser, !!runtime.token)
   for (let round = 0; round < 3; round++) {
     const forced = round === 0 ? requiredTool : undefined
-    const result = await callModel(apiKey, conversation, runtime.fetchImpl, round < 2, forced)
+    let result = await callModel(apiKey, conversation, runtime.fetchImpl, round < 2, forced)
+    if (!result.message && result.toolCallFailed && requiredTool) {
+      const call: AssistantToolCall = {
+        id: 'server-tool-recovery',
+        type: 'function',
+        function: { name: requiredTool, arguments: JSON.stringify(requiredToolArgs(lastUser, requiredTool)) },
+      }
+      const content = await executeAssistantTool(call.function.name, parseArgs(call.function.arguments), runtime, state)
+      conversation.push(
+        { role: 'assistant', content: null, tool_calls: [call] },
+        { role: 'tool', tool_call_id: call.id, content },
+      )
+      result = await callModel(apiKey, conversation, runtime.fetchImpl, false)
+    }
     sawRateLimit ||= result.rateLimited
-    if (!result.message) return withFallback(memory, sawRateLimit ? UNAVAILABLE : UNSURE, sawRateLimit ? 'model rate limited' : 'model unavailable')
+    if (!result.message) {
+      if (state.link?.path === '/login') {
+        return {
+          action: 'answer', intent: 'question', answer: 'Please sign in to continue.',
+          sources: [], verified: true, memory, link: state.link,
+        }
+      }
+      return withFallback(memory, sawRateLimit ? UNAVAILABLE : UNSURE, sawRateLimit ? 'model rate limited' : 'model unavailable')
+    }
     usedModel = result.model
     const message = result.message
     const calls = round < 2 ? toolCalls(message) : []

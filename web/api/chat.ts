@@ -36,7 +36,7 @@ const json = (body: unknown, status = 200) =>
   })
 
 export async function POST(request: Request): Promise<Response> {
-  const apiKey = process.env.GROQ_API_KEY
+  const apiKey = process.env.CLINE_API_KEY
   const supaUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL
   const supaKey = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY
   if (!apiKey || !supaUrl || !supaKey) return json({ error: 'Chat is not configured' }, 500)

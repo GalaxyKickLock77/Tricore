@@ -2,6 +2,8 @@
 import { runAssistant } from '../api/_lib/assistant.ts'
 import type { ChatMessage } from '../api/_lib/core.ts'
 
+const CLINE_URL = 'https://api.cline.bot/api/v1/chat/completions'
+
 const PRODUCT_ID = '11111111-1111-4111-8111-111111111111'
 const PRODUCT = {
   id: `product:${PRODUCT_ID}`,
@@ -31,6 +33,7 @@ interface HarnessOptions {
   product?: { id: string; name: string; price: number; stock: number; is_active: boolean }
   account?: unknown
   accountFails?: boolean
+  toolCallFails?: boolean
 }
 function harness(options: HarnessOptions) {
   const model = [...options.model]
@@ -38,7 +41,10 @@ function harness(options: HarnessOptions) {
   const fetchImpl = (async (url: any, init?: any) => {
     const target = String(url)
     requests.push({ url: target, init })
-    if (target === 'https://api.groq.com/openai/v1/chat/completions') {
+    if (target === CLINE_URL) {
+      if (options.toolCallFails && requests.filter((request) => request.url === target).length === 1) {
+        return new Response(JSON.stringify({ error: { code: 'tool_use_failed', message: 'Tool choice is required, but model did not call a tool' } }), { status: 400 })
+      }
       if (!model.length) throw new Error('Unexpected extra model call')
       return modelBody(model.shift())
     }
@@ -121,7 +127,7 @@ await check('a product question after a ticket-count turn searches products, not
     ],
     apiKey: 'test', runtime: h.runtime,
   })
-  const request = h.requests.find((item) => item.url === 'https://api.groq.com/openai/v1/chat/completions')
+  const request = h.requests.find((item) => item.url === CLINE_URL)
   const body = JSON.parse(String(request?.init?.body))
   expect(body.tool_choice?.function?.name === 'search_store', `latest product question did not force search_store: ${JSON.stringify(body.tool_choice)}`)
   expect(reply.answer === 'We sell Tricore Test Laptop.', `product question got a stale answer: ${reply.answer}`)
@@ -162,10 +168,29 @@ await check('ticket section count is explained by the model from live data', asy
   expect(reply.answer === 'There are 6 tickets in the support section: 2 open, 1 in progress, and 3 resolved.', reply.answer)
   expect(reply.sources.some((source) => source.id === 'account:tickets'), 'ticket count did not include its live source')
   expect(reply.link === undefined, 'the answer should not force unnecessary navigation')
-  const modelRequest = h.requests.find((request) => request.url.includes('chat/completions'))
+  const modelRequest = h.requests.find((request) => request.url === CLINE_URL)
   const modelBody = JSON.parse(String(modelRequest?.init?.body))
   expect(modelBody.tool_choice?.function?.name === 'read_account', 'ticket section count must force live ticket data')
   expect(modelBody.messages[0].content.includes('"Available" without a status means the total'), 'model instructions omit the support-section interpretation')
+})
+
+await check('a rejected ticket tool call recovers live data before LLM phrasing', async () => {
+  const h = harness({
+    token: 'admin-token',
+    account: {
+      viewer_is_admin: true,
+      tickets: { total: 6, pending: 3, open: 2, in_progress: 1, resolved: 3 },
+    },
+    toolCallFails: true,
+    model: [finalResponse('There are 2 open support tickets in the store.', ['account:tickets'])],
+  })
+  const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
+  const modelRequests = h.requests.filter((request) => request.url === CLINE_URL)
+  expect(reply.answer === 'There are 2 open support tickets in the store.', reply.answer)
+  expect(reply.sources.some((source) => source.id === 'account:tickets'), 'recovered response lacks a live ticket source')
+  expect(h.requests.some((request) => request.url.endsWith('/rpc/chat_account_context')), 'rejected tool call did not trigger a live account lookup')
+  expect(modelRequests.length === 2, `expected rejected tool call plus LLM phrasing call, got ${modelRequests.length}`)
+  expect(JSON.parse(String(modelRequests[1].init?.body)).tool_choice === 'none', 'recovery call should ask the LLM to phrase the fetched result without another tool call')
 })
 
 await check('open ticket question uses the open count, not the total', async () => {
@@ -227,7 +252,7 @@ await check('pending support count uses exact live aggregates and adds support n
   const accountRequest = h.requests.find((r) => r.url.endsWith('/rpc/chat_account_context'))
   const headers = accountRequest?.init?.headers as Record<string, string>
   expect(headers.Authorization === 'Bearer admin-token', 'private data must use the user token, not a service key')
-  expect(h.requests.some((r) => r.url === 'https://api.groq.com/openai/v1/chat/completions'), 'LLM should explain the live pending ticket counts')
+  expect(h.requests.some((r) => r.url === CLINE_URL), 'LLM should explain the live pending ticket counts')
 })
 
 await check('signed-out account questions require sign-in and never query private data', async () => {
@@ -241,6 +266,15 @@ await check('signed-out account questions require sign-in and never query privat
   expect(reply.link?.path === '/login', 'sign-in button missing')
   expect(!h.requests.some((r) => r.url.includes('chat_account_context')), 'anonymous private query was attempted')
   expect(h.requests.some((r) => r.url.includes('chat/completions')), 'signed-out response should remain model-generated')
+})
+
+await check('a model outage preserves the sign-in link for private ticket questions', async () => {
+  const h = harness({
+    model: [toolResponse([{ name: 'show_page', args: { page: '/login', label: 'Sign in to continue' } }])],
+  })
+  const reply = await runAssistant({ messages: user('How many tickets do I have?'), apiKey: 'test', runtime: h.runtime })
+  expect(reply.action === 'answer' && /sign in/i.test(reply.answer), `expected a sign-in fallback, got ${reply.answer}`)
+  expect(reply.link?.path === '/login', `login link was lost: ${JSON.stringify(reply.link)}`)
 })
 
 await check('out-of-stock products never produce a checkout action', async () => {

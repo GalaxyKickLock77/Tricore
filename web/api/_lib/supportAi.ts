@@ -1,6 +1,6 @@
 // AI helpers for the admin support queue: suggested reply, ticket summary/priority, knowledge-base draft.
 // The AI only DRAFTS. A human reads and sends/saves everything.
-import { MODELS, callGroq, extractJson, numbersAreGrounded, type ChatContext } from './core.js'
+import { MODELS, callCline, extractJson, numbersAreGrounded, type ChatContext, type ClineResponseTool } from './core.js'
 
 export type AiMode = 'suggest_reply' | 'summarize' | 'kb_draft'
 
@@ -96,6 +96,52 @@ export type AiOutcome = { ok: true; result: AiResult } | { ok: false; error: str
 const CATEGORIES = ['payment', 'delivery', 'order', 'product', 'account', 'complaint', 'other']
 const PRIORITIES = ['low', 'normal', 'high', 'urgent']
 
+function outputTool(mode: AiMode): ClineResponseTool {
+  const shared = {
+    type: 'object',
+    additionalProperties: false,
+  }
+  const schemas: Record<AiMode, Record<string, unknown>> = {
+    suggest_reply: {
+      ...shared,
+      properties: {
+        reply: { type: 'string' },
+        agent_notes: { type: 'array', items: { type: 'string' } },
+        confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+      },
+      required: ['reply', 'agent_notes', 'confidence'],
+    },
+    summarize: {
+      ...shared,
+      properties: {
+        summary: { type: 'string' },
+        category: { type: 'string', enum: CATEGORIES },
+        priority: { type: 'string', enum: PRIORITIES },
+        sentiment: { type: 'string', enum: ['calm', 'worried', 'angry'] },
+      },
+      required: ['summary', 'category', 'priority'],
+    },
+    kb_draft: {
+      ...shared,
+      properties: {
+        should_add: { type: 'boolean' },
+        title: { type: 'string' },
+        content: { type: 'string' },
+        reason: { type: 'string' },
+      },
+      required: ['should_add', 'title', 'content', 'reason'],
+    },
+  }
+  return {
+    type: 'function',
+    function: {
+      name: 'submit_support_ai_result',
+      description: 'Return the requested support-ticket AI result in the defined structured fields.',
+      parameters: schemas[mode],
+    },
+  }
+}
+
 export async function runSupportAi(opts: {
   mode: AiMode
   ticket: TicketData
@@ -114,7 +160,7 @@ export async function runSupportAi(opts: {
   let model = ''
   let rateLimited = false
   for (const m of MODELS) {
-    const r = await callGroq(apiKey, m, messages, fetchImpl)
+    const r = await callCline(apiKey, m, messages, fetchImpl, outputTool(mode))
     if (r.ok) {
       content = r.content
       model = m.id

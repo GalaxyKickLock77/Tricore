@@ -1,5 +1,5 @@
 // LIVE admin-insight check: does the assistant answer store questions from real data, with no canned text?
-// No stubs: real Supabase Auth, real Groq, real /api/chat handler.
+// No stubs: real Supabase Auth, real Cline, real /api/chat handler.
 // 1. Creates a temporary account and promotes it to admin (service-role key, admin API only).
 // 2. Reads the ground-truth figures straight from the database with that admin's own token.
 // 3. Asks the assistant the same questions and compares every number it says with the database.
@@ -18,8 +18,8 @@ if (existsSync(envFile)) {
 const SUPA = (process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 const PUBLISHABLE = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? ''
-if (!SUPA || !SERVICE || !PUBLISHABLE || !process.env.GROQ_API_KEY) {
-  console.error('Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_PUBLISHABLE_KEY or GROQ_API_KEY in web/.env.local')
+if (!SUPA || !SERVICE || !PUBLISHABLE || !process.env.CLINE_API_KEY) {
+  console.error('Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_PUBLISHABLE_KEY or CLINE_API_KEY in web/.env.local')
   process.exit(2)
 }
 
@@ -76,7 +76,7 @@ try {
   const { POST } = await import('../api/chat.ts')
   let ipCounter = 0
   const ask = async (question: string, withToken = true) => {
-    await new Promise((r) => setTimeout(r, 4000)) // Groq free-tier pacing
+    await new Promise((r) => setTimeout(r, 4000)) // Pace free-model requests
     const res = await POST(new Request('http://localhost/api/chat', {
       method: 'POST',
       headers: {
@@ -106,6 +106,14 @@ try {
         : !numbersIn(String(closed.answer)).includes(truth.tickets?.resolved) ? `expected ${truth.tickets?.resolved} closed in: ${closed.answer}`
           : allGrounded(closed),
     `A: ${String(closed.answer).replace(/\s+/g, ' ')}`)
+
+  const open = await ask('how many tickets are open in the support ticket section?')
+  report('open ticket count comes from live data',
+    deflecting.test(String(open.answer)) ? `deflected: ${open.answer}`
+      : open.action !== 'answer' ? `action=${open.action}: ${open.answer}`
+        : !numbersIn(String(open.answer)).includes(truth.tickets?.open) ? `expected ${truth.tickets?.open} open in: ${open.answer}`
+          : allGrounded(open),
+    `A: ${String(open.answer).replace(/\s+/g, ' ')}`)
 
   // 2. A catalogue figure the assistant had never been able to see before.
   const stock = await ask('how many products are out of stock right now?')

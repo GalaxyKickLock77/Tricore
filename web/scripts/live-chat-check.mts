@@ -1,5 +1,5 @@
 // LIVE check of the Tricore chat assistant: no stubs. Calls the real /api/chat handler,
-// which calls the real Groq API and the real Supabase project (keys read from web/.env.local).
+// which calls the real Cline API and the real Supabase project (keys read from web/.env.local).
 // Run from web/:  node_modules\.bin\jiti.cmd scripts\live-chat-check.mts
 // Signed-in checkout needs a customer session token, so it is not covered here (see the report).
 import { readFileSync, existsSync } from 'node:fs'
@@ -11,8 +11,8 @@ if (existsSync(envFile)) {
     if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
   }
 }
-if (!process.env.GROQ_API_KEY || !(process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL)) {
-  console.error('Missing GROQ_API_KEY or SUPABASE_URL in web/.env.local')
+if (!process.env.CLINE_API_KEY || !(process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL)) {
+  console.error('Missing CLINE_API_KEY or SUPABASE_URL in web/.env.local')
   process.exit(2)
 }
 
@@ -33,7 +33,7 @@ async function ask(question: string, history: { role: 'user' | 'assistant'; cont
 }
 
 async function check(name: string, question: string, verify: (b: Record<string, any>) => string | null, history?: { role: 'user' | 'assistant'; content: string }[]) {
-  // Groq's free tier rate-limits bursts; the assistant retries 429s, so a short pause is enough.
+  // Pace free-model requests to reduce provider throttling.
   await new Promise((r) => setTimeout(r, 4000))
   console.log(`... ${name}`)
   const started = Date.now()

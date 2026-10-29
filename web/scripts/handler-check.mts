@@ -1,4 +1,4 @@
-// Calls the real /api/chat handler with a stubbed Supabase RPC and the real Groq API.
+// Calls the real /api/chat handler with a stubbed Supabase RPC and the real Cline API.
 import { writeFileSync, appendFileSync } from 'node:fs'
 process.env.SUPABASE_URL = 'https://stub.supabase.co'
 process.env.SUPABASE_PUBLISHABLE_KEY = 'stub'

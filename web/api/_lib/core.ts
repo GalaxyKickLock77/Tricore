@@ -1,4 +1,4 @@
-// Tricore assistant core: grounded answering with Groq + programmatic verification.
+// Tricore assistant core: grounded answering with Cline + programmatic verification.
 // Pure logic (no HTTP framework) so it can be unit/eval tested outside Vercel.
 
 export type Role = 'user' | 'assistant'
@@ -51,13 +51,50 @@ export interface BotReply {
   order?: OrderProposal
 }
 
-// Free-tier models on Groq, best accuracy first. Each model has its own rate limit, so the
-// list doubles as a fallback chain when one is throttled.
+export const CLINE_CHAT_COMPLETIONS_URL = 'https://api.cline.bot/api/v1/chat/completions'
+
+// Cline's free model was verified with the app's OpenAI-compatible tool-call format.
 export const MODELS: { id: string; extra: Record<string, unknown> }[] = [
-  { id: 'openai/gpt-oss-120b', extra: { reasoning_effort: 'low' } },
-  { id: 'qwen/qwen3.8-27b', extra: { reasoning_effort: 'none' } },
-  { id: 'openai/gpt-oss-20b', extra: { reasoning_effort: 'low' } },
+  { id: 'nvidia/nemotron-3.5-lightning:free', extra: {} },
 ]
+
+export interface ClineResponseTool {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+  }
+}
+
+const ANSWER_TOOL: ClineResponseTool = {
+  type: 'function',
+  function: {
+    name: 'answer_user',
+    description: 'Return the structured answer to the user using the required fields.',
+    parameters: {
+      type: 'object',
+      properties: {
+        intent: { type: 'string', enum: ['greeting', 'offtopic', 'question'] },
+        action: { type: 'string', enum: ['answer', 'offer_team', 'handoff', 'confirm_order'] },
+        answer: { type: 'string' },
+        handoff_reason: { type: 'string' },
+        sources: { type: 'array', items: { type: 'string' } },
+        order: {
+          type: 'object',
+          properties: {
+            product_id: { type: 'string' }, name: { type: 'string' },
+            unit_price: { type: 'number' }, quantity: { type: 'integer' },
+          },
+          required: ['product_id', 'name', 'unit_price', 'quantity'],
+          additionalProperties: false,
+        },
+      },
+      required: ['intent', 'action', 'answer', 'sources'],
+      additionalProperties: false,
+    },
+  },
+}
 
 const MAX_PRODUCTS_IN_PROMPT = 20
 const MAX_ARTICLE_CHARS = 700
@@ -213,33 +250,48 @@ ${productText}${ordersText}`
   return { system, idMap, contextText: `${articleText}\n${productText}\n${ordersText}` }
 }
 
-export type GroqOutcome = { ok: true; content: string } | { ok: false; status: number }
+export type ClineOutcome = { ok: true; content: string } | { ok: false; status: number }
+type ClineChatMessage = {
+  content?: string | null
+  reasoning_content?: string | null
+  tool_calls?: { function?: { name?: string; arguments?: string } }[]
+}
 
-export async function callGroq(
+export async function callCline(
   apiKey: string,
   model: (typeof MODELS)[number],
   messages: { role: string; content: string }[],
   fetchImpl: typeof fetch,
-): Promise<GroqOutcome> {
+  responseTool?: ClineResponseTool,
+): Promise<ClineOutcome> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 20000)
   try {
-    const res = await fetchImpl('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetchImpl(CLINE_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: model.id,
         messages,
         temperature: 0.3,
-        max_completion_tokens: 1000,
-        response_format: { type: 'json_object' },
+        max_tokens: 1000,
+        ...(responseTool ? {
+          tools: [responseTool],
+          tool_choice: { type: 'function', function: { name: responseTool.function.name } },
+        } : {}),
         ...model.extra,
       }),
       signal: ctl.signal,
     })
     if (!res.ok) return { ok: false, status: res.status }
-    const data = (await res.json()) as { choices?: { message?: { content?: string | null; reasoning_content?: string | null } }[] }
-    const content = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content
+    const envelope = (await res.json()) as {
+      data?: { choices?: { message?: ClineChatMessage }[] }
+      choices?: { message?: ClineChatMessage }[]
+    }
+    const choices = envelope.data?.choices ?? envelope.choices
+    const message = choices?.[0]?.message
+    const structured = message?.tool_calls?.find((call) => call.function?.name === responseTool?.function.name)?.function?.arguments
+    const content = structured || message?.content || message?.reasoning_content
     if (!content) return { ok: false, status: 502 }
     return { ok: true, content }
   } catch {
@@ -640,7 +692,7 @@ export async function answerQuestion(opts: {
     let model = ''
     let rateLimited = false
     for (const m of MODELS) {
-      const r = await callGroq(apiKey, m, [...convo, ...extra], fetchImpl)
+      const r = await callCline(apiKey, m, [...convo, ...extra], fetchImpl, ANSWER_TOOL)
       if (r.ok) {
         content = r.content
         model = m.id

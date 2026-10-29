@@ -1,4 +1,4 @@
-// LIVE signed-in check. No stubs: real Supabase Auth, real Groq, real /api/chat handler.
+// LIVE signed-in check. No stubs: real Supabase Auth, real Cline, real /api/chat handler.
 // 1. Creates a temporary confirmed customer with the service-role key (admin API).
 // 2. Signs in as that customer (password grant) to get a real access token.
 // 3. Asks the signed-in questions through POST /api/chat with Authorization: Bearer <token>.
@@ -17,8 +17,8 @@ if (existsSync(envFile)) {
 const SUPA = (process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 const PUBLISHABLE = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? ''
-if (!SUPA || !SERVICE || !PUBLISHABLE || !process.env.GROQ_API_KEY) {
-  console.error('Missing Supabase/Groq keys in web/.env.local')
+if (!SUPA || !SERVICE || !PUBLISHABLE || !process.env.CLINE_API_KEY) {
+  console.error('Missing Supabase/Cline keys in web/.env.local')
   process.exit(2)
 }
 
@@ -50,7 +50,7 @@ try {
   const { POST } = await import('../api/chat.ts')
   let ipCounter = 0
   const ask = async (question: string, history: { role: 'user' | 'assistant'; content: string }[] = []) => {
-    await new Promise((r) => setTimeout(r, 4000)) // Groq free-tier pacing
+    await new Promise((r) => setTimeout(r, 4000)) // Pace free-model requests
     const res = await POST(new Request('http://localhost/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.30.0.${++ipCounter}`, authorization: `Bearer ${token}` },

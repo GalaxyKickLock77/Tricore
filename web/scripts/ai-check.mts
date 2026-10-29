@@ -30,7 +30,7 @@ r = await runSupportAi({ ...base, mode: 'suggest_reply', fetchImpl: (async () =>
 ok(!r.ok, 'unreadable AI output -> error, nothing is invented')
 
 // real model (uses a little free quota)
-const apiKey = process.env.GROQ_API_KEY ?? ''
+const apiKey = process.env.CLINE_API_KEY ?? ''
 const thread = [{ author_role: 'admin' as const, body: 'Hi, we checked and your payment was received. Payments take up to one business day to be verified. Your order will ship after that.' }]
 for (const mode of ['summarize', 'suggest_reply'] as const) {
   const out = await runSupportAi({ ticket, thread: mode === 'suggest_reply' ? [] : [], orders, context: null, apiKey, mode })
