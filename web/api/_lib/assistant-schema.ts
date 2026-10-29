@@ -62,7 +62,7 @@ export const ASSISTANT_TOOLS = [
     function: {
       name: 'read_account',
       description:
-        'Live counts, statuses, history and tracking for orders, support tickets and the catalogue, computed in the database for the person asking. Use it for ANY how-many, closed, open, pending, resolved, in-progress, shipped, delivered, cancelled, out-of-stock or recent question. Row level security gives a customer their own records and an admin the whole store; the payload states its scope and the status vocabulary.',
+        'Live counts, statuses, history and tracking for orders, support tickets and the catalogue, computed in the database for the person asking. Use it for ANY how-many, closed, open, pending, resolved, in-progress, shipped, delivered, cancelled, out-of-stock or recent question. For tickets, total is all tickets in scope; open, in_progress, resolved and pending are separate returned counts. "Available in the support section" means total unless a status is specified. Row level security gives a customer their own records and an admin the whole store; the payload states its scope and status vocabulary.',
       parameters: {
         type: 'object',
         properties: {

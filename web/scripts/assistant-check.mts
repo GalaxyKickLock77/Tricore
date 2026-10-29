@@ -127,6 +127,49 @@ await check('a product question after a ticket-count turn searches products, not
   expect(reply.answer === 'We sell Tricore Test Laptop.', `product question got a stale answer: ${reply.answer}`)
 })
 
+await check('ticket section count is explained by the model from live data', async () => {
+  const h = harness({
+    token: 'admin-token',
+    account: {
+      viewer_is_admin: true,
+      status_vocabulary: { ticket: { aliases: { closed: 'resolved', pending: 'open + in_progress', open: 'open' } } },
+      tickets: { total: 6, pending: 3, open: 2, in_progress: 1, resolved: 3 },
+    },
+    model: [
+      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
+      finalResponse('There are 6 tickets in the support section: 2 open, 1 in progress, and 3 resolved.', ['account:tickets']),
+    ],
+  })
+  const reply = await runAssistant({
+    messages: user('how many tickets are available in support ticket section'),
+    apiKey: 'test', runtime: h.runtime, isAdmin: true,
+  })
+  expect(reply.answer === 'There are 6 tickets in the support section: 2 open, 1 in progress, and 3 resolved.', reply.answer)
+  expect(reply.sources.some((source) => source.id === 'account:tickets'), 'ticket count did not include its live source')
+  expect(reply.link === undefined, 'the answer should not force unnecessary navigation')
+  const modelRequest = h.requests.find((request) => request.url.includes('chat/completions'))
+  const modelBody = JSON.parse(String(modelRequest?.init?.body))
+  expect(modelBody.tool_choice?.function?.name === 'read_account', 'ticket section count must force live ticket data')
+  expect(modelBody.messages[0].content.includes('"Available" without a status means the total'), 'model instructions omit the support-section interpretation')
+})
+
+await check('open ticket question uses the open count, not the total', async () => {
+  const h = harness({
+    token: 'admin-token',
+    account: {
+      viewer_is_admin: true,
+      tickets: { total: 6, pending: 3, open: 2, in_progress: 1, resolved: 3 },
+    },
+    model: [
+      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
+      finalResponse('There are 2 open support tickets in the store.', ['account:tickets']),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
+  expect(reply.answer === 'There are 2 open support tickets in the store.', reply.answer)
+  expect(reply.sources.some((source) => source.id === 'account:tickets'), 'open count did not include its live source')
+})
+
 await check('pending support count uses exact live aggregates and adds support navigation', async () => {
   const h = harness({
     token: 'admin-token',
@@ -149,9 +192,7 @@ await check('pending support count uses exact live aggregates and adds support n
   const accountRequest = h.requests.find((r) => r.url.endsWith('/rpc/chat_account_context'))
   const headers = accountRequest?.init?.headers as Record<string, string>
   expect(headers.Authorization === 'Bearer admin-token', 'private data must use the user token, not a service key')
-  const modelRequest = h.requests.find((r) => r.url === 'https://api.groq.com/openai/v1/chat/completions')
-  const modelBody = JSON.parse(String(modelRequest?.init?.body))
-  expect(modelBody.tool_choice?.function?.name === 'read_account', 'ticket counts must force the live account tool')
+  expect(h.requests.some((r) => r.url === 'https://api.groq.com/openai/v1/chat/completions'), 'LLM should explain the live pending ticket counts')
 })
 
 await check('signed-out account questions require sign-in and never query private data', async () => {
@@ -164,6 +205,7 @@ await check('signed-out account questions require sign-in and never query privat
   const reply = await runAssistant({ messages: user('How many tickets do I have?'), apiKey: 'test', runtime: h.runtime })
   expect(reply.link?.path === '/login', 'sign-in button missing')
   expect(!h.requests.some((r) => r.url.includes('chat_account_context')), 'anonymous private query was attempted')
+  expect(h.requests.some((r) => r.url.includes('chat/completions')), 'signed-out response should remain model-generated')
 })
 
 await check('out-of-stock products never produce a checkout action', async () => {
@@ -183,13 +225,13 @@ await check('out-of-stock products never produce a checkout action', async () =>
 await check('unverified model numbers are rejected', async () => {
   const h = harness({
     token: 'customer-token',
-    account: { viewer_scope: 'customer: own records only', tickets: { total: 1, pending: 1, open: 1, in_progress: 0, resolved: 0, recent: [] } },
+    account: { viewer_scope: 'admin: every order, ticket and product in the store', orders: { total: 1, pending: 1 } },
     model: [
-      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
-      finalResponse('You have 99 pending tickets.', ['account:tickets']),
+      toolResponse([{ name: 'read_account', args: { resource: 'orders' } }]),
+      finalResponse('You have 99 pending orders.', ['account:orders']),
     ],
   })
-  const reply = await runAssistant({ messages: user('How many pending tickets?'), apiKey: 'test', runtime: h.runtime })
+  const reply = await runAssistant({ messages: user('How many pending orders?'), apiKey: 'test', runtime: h.runtime })
   expect(reply.action === 'offer_team' && !/99 pending/.test(reply.answer), 'hallucinated count reached the customer')
 })
 
