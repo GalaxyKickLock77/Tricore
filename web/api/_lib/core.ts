@@ -148,7 +148,7 @@ export function routeFast(messages: ChatMessage[], name?: string): BotReply | nu
   return null
 }
 
-export function buildPrompt(ctx: ChatContext, name?: string, state = '') {
+export function buildPrompt(ctx: ChatContext, name?: string, state = '', signedIn = !!name) {
   const orderLines = (ctx.orders ?? []).slice(0, 5).map((o, i) => {
     return `[o${i + 1}] ${o.quantity} x ${o.products?.name ?? 'item'} | ${fmt(o.unit_price * o.quantity)} | ${o.status} | ${o.created_at.slice(0, 10)}`
   })
@@ -183,7 +183,7 @@ export function buildPrompt(ctx: ChatContext, name?: string, state = '') {
       ? `complete list: all ${total} products`
       : `PARTIAL: showing ${products.length} of ${total} products (best matches for the question, plus the cheapest, most expensive and newest)`
 
-  const authLine = name ? `The customer is signed in. Do not ask them to sign in.\n` : `The customer is NOT signed in. Do not list products or prices; instead invite them to sign in with Google to browse the catalog and place orders.\n`
+  const authLine = signedIn ? `The customer is signed in. Do not ask them to sign in.\n` : `The customer is NOT signed in. Do not list products or prices; instead invite them to sign in with Google to browse the catalog and place orders.\n`
   const nameLine = name ? `The customer's first name is ${name}. Use it naturally now and then, not in every message.\n` : ''
   const system = `You are the virtual assistant of Tricore IT Solutions, an online IT products store, chatting with customers in the website widget. Sound like a friendly, knowledgeable shop assistant.
 ${authLine}${nameLine}VOICE: natural contractions, 1 to 4 short sentences; answer first, then at most one helpful follow-up question; vary your openings; no emoji unless the customer uses them. Brief small talk is fine (how are you, who are you, thanks), then steer back. If asked, say you are Tricore's virtual assistant and never claim to be human. Never say "context", "knowledge base" or "as an AI". Reply in the customer's language (English, Hindi, Telugu, Tamil...), keeping product names and prices exactly as listed.
@@ -611,16 +611,18 @@ export async function answerQuestion(opts: {
   context: ChatContext
   apiKey: string
   name?: string
+  signedIn?: boolean
   memory?: string[]
   fetchImpl?: typeof fetch
 }): Promise<BotReply> {
   const { messages, context, apiKey, name } = opts
+  const signedIn = opts.signedIn ?? !!name
   const memory = (opts.memory ?? []).slice(-5)
   const fetchImpl = opts.fetchImpl ?? fetch
   const fast = routeFast(messages, name)
   if (fast) return { ...fast, memory }
   const focus = analyze(messages, context.products, memory)
-  const { system, idMap, contextText } = buildPrompt(context, name, stateBlock(focus, context.products))
+  const { system, idMap, contextText } = buildPrompt(context, name, stateBlock(focus, context.products), signedIn)
   const withMemory = (r: BotReply): BotReply => ({ ...r, memory: focus.discussed })
   const direct = routeOrders(messages, context) ?? routeOrder(messages, context, focus) ?? routeCatalog(messages, context, focus)
   if (direct) return withMemory(direct)

@@ -81,8 +81,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const lastText = messages[messages.length - 1].content
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (wantsOrderStatus(lastText)) {
-    const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
     context.orders = null
     if (token) {
       try {
@@ -101,7 +101,7 @@ export async function POST(request: Request): Promise<Response> {
   const hit = cacheKey ? cache.get(cacheKey) : undefined
   if (hit && Date.now() - hit.at < CACHE_MS) return json(hit.reply)
 
-  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name, memory })
+  const { model: _model, ...reply } = await answerQuestion({ messages, context, apiKey, name, signedIn: !!token, memory })
   const faqOnly = Array.isArray(reply.sources) && reply.sources.length > 0 && reply.sources.every((x) => !/^p\d+$/.test(x.id))
   if (cacheKey && _model && faqOnly && reply.action === 'answer' && reply.intent === 'question' && reply.verified) {
     if (cache.size > 300) cache.clear()
