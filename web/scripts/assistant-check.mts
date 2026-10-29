@@ -127,6 +127,21 @@ await check('a product question after a ticket-count turn searches products, not
   expect(reply.answer === 'We sell Tricore Test Laptop.', `product question got a stale answer: ${reply.answer}`)
 })
 
+await check('a named product question forces the live catalog tool', async () => {
+  const h = harness({
+    token: 'customer-token',
+    model: [
+      toolResponse([{ name: 'search_store', args: { query: 'Tricore Test Laptop' } }]),
+      finalResponse('Yes, Tricore Test Laptop is in our catalog.', [`product:${PRODUCT_ID}`]),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('Do you carry Tricore Test Laptop?'), apiKey: 'test', runtime: h.runtime })
+  const request = h.requests.find((item) => item.url.includes('chat/completions'))
+  const body = JSON.parse(String(request?.init?.body))
+  expect(body.tool_choice?.function?.name === 'search_store', 'named product question did not force the catalog tool')
+  expect(reply.sources.some((source) => source.id === `product:${PRODUCT_ID}`), 'named product answer lacks a live catalog source')
+})
+
 await check('ticket section count is explained by the model from live data', async () => {
   const h = harness({
     token: 'admin-token',
@@ -168,6 +183,26 @@ await check('open ticket question uses the open count, not the total', async () 
   const reply = await runAssistant({ messages: user('How many tickets are open?'), apiKey: 'test', runtime: h.runtime, isAdmin: true })
   expect(reply.answer === 'There are 2 open support tickets in the store.', reply.answer)
   expect(reply.sources.some((source) => source.id === 'account:tickets'), 'open count did not include its live source')
+})
+
+await check('a support case question forces live ticket data', async () => {
+  const h = harness({
+    token: 'customer-token',
+    account: {
+      viewer_scope: 'customer: own records only',
+      tickets: { total: 1, pending: 1, open: 1, in_progress: 0, resolved: 0, recent: [{ ref: 'ABC12345', status: 'open' }] },
+    },
+    model: [
+      toolResponse([{ name: 'read_account', args: { resource: 'tickets' } }]),
+      finalResponse('Your support case ABC12345 is open.', ['account:tickets']),
+    ],
+  })
+  const reply = await runAssistant({ messages: user('What is happening with my support case?'), apiKey: 'test', runtime: h.runtime })
+  const request = h.requests.find((item) => item.url.includes('chat/completions'))
+  const body = JSON.parse(String(request?.init?.body))
+  expect(body.tool_choice?.function?.name === 'read_account', 'support case question did not force the account tool')
+  expect(reply.answer === 'Your support case ABC12345 is open.', reply.answer)
+  expect(reply.sources.some((source) => source.id === 'account:tickets'), 'support case answer lacks a live ticket source')
 })
 
 await check('pending support count uses exact live aggregates and adds support navigation', async () => {

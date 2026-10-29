@@ -42,13 +42,14 @@ function systemPrompt(name: string | undefined, page: string, signedIn: boolean,
 STATE: ${isAdmin ? 'Signed in as an ADMIN of the store (sees every order, ticket and product).' : signedIn ? 'Signed in as a customer.' : 'NOT signed in.'} Page: ${page || 'unknown'}.${name ? ` Name: ${name}.` : ''}
 
 TOOLS - call them before you answer; you have no facts of your own:
-- search_store: products, prices, stock, policies, how-to. Never answer such a question from memory.
-- read_account: live counts and status for orders, support tickets and the catalogue. REQUIRED for any "how many", "are there", "what is the status", "recent", "this week/30 days" or ticket/order overview question - including an admin asking about the whole store. The payload says what you may see (viewer_scope), gives figures per status, and carries status_vocabulary mapping everyday words (closed, completed, unpaid, on the way...) onto real status values.
+- search_store: products, prices, stock, policies, how-to. REQUIRED before answering any product question, including a named product, model, or item even when the user does not say "product". Never answer such a question from memory.
+- read_account: live counts and status for orders, support tickets and the catalogue. REQUIRED for every question about a support ticket or case, and for any "how many", "are there", "what is the status", "recent", "this week/30 days" or ticket/order overview question - including an admin asking about the whole store. For ticket process or policy questions, also use search_store. The payload says what you may see (viewer_scope), gives figures per status, and carries status_vocabulary mapping everyday words (closed, completed, unpaid, on the way...) onto real status values.
 - prepare_checkout: after search_store, with the exact product id and quantity. Validates stock. Places no order.
 - show_page: adds a navigation button. Use it when the page is the natural next step (admin: /admin/support, /admin/orders, /admin/products; customer: /orders, /tickets; visitor: /login or /shop).
 
 RULES:
 - Every fact comes from a tool result in this conversation. Never say you cannot see counts, tickets, orders or stock without having called the tool, and never send someone to a page instead of answering when read_account can answer them.
+- For every new user question about a product or ticket, make a fresh relevant tool call before answering. Do not reuse a previous turn's answer or tool result as the source for the new question.
 - For "how many tickets are available/in the support section" or "how many tickets does the store have", answer from tickets.total and briefly include open, in_progress and resolved counts from the same result. "Available" without a status means the total, not just open tickets. Use viewer_scope to say whether the figures are for the store or only the signed-in customer.
 - For a status-specific ticket question, use its exact field: tickets.open, tickets.in_progress, tickets.resolved, or tickets.pending. The payload defines pending; do not substitute one status for another.
 - Copy numbers exactly as the tools returned them; choose the right status using status_vocabulary and the definitions in the payload (for example pending is defined there). Do not invent percentages, averages, rates or dates, and do not do arithmetic on figures you were not given.
@@ -176,9 +177,10 @@ function parseArgs(raw: string): unknown {
 
 function requiredToolForQuestion(question: string, signedIn: boolean): string | undefined {
   if (!signedIn && /\b(check ?out|buy|purchase|orders?|tickets?|account)\b/i.test(question)) return 'show_page'
+  if (/\b(tickets?|support requests?|support cases?)\b/i.test(question)) return 'read_account'
   const asksForLiveFigures = /\b(how many|how much|number of|count|are there|what(?:'s| is) the status|recent|this week|this month)\b/i.test(question)
   if (asksForLiveFigures && /\b(tickets?|support requests?|orders?|products?|stock)\b/i.test(question)) return 'read_account'
-  if (/\b(products?|sell|catalog|catalogue|price|cost|available)\b/i.test(question)) return 'search_store'
+  if (/\b(products?|sell|catalog|catalogue|price|cost|available|stock|item|items|carry|recommend|compare|specs?)\b/i.test(question) || /\bdo you (have|sell|carry|stock|offer)\b/i.test(question)) return 'search_store'
   return undefined
 }
 
